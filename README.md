@@ -106,7 +106,7 @@ Set these as environment variables. Everything else is configured in the UI.
 - Secrets are redacted from log text before it is stored or sent to an AI provider.
 - Security headers include CSP, X-Frame-Options and nosniff.
 
-Please report vulnerabilities privately to the maintainers rather than in public issues.
+Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 
 ## Development
 
@@ -119,6 +119,16 @@ The layout is described in [docs/PLAN.md](docs/PLAN.md). The Coolify adapter
 (`opsmender/adapters/coolify.py`) parses API responses defensively because field names vary
 between Coolify releases. Additional adapters (plain Docker, Kubernetes) can implement the same
 `Provider` interface.
+
+## Contributing
+
+Contributions are welcome, especially testing against different Coolify versions and new diagnosis
+rules. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache License 2.0](LICENSE)
 
 ## Status
 

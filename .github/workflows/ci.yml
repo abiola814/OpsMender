@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  probe:
+    name: probe (dash + busybox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Run as root: unprivileged, the probe re-executes itself through sudo from its install path.
+      - name: Probe prints valid JSON with dash
+        run: sudo dash opsmender/metrics/probe.sh snapshot | python3 -m json.tool > /dev/null
+      - name: Probe prints valid JSON with busybox sh
+        run: |
+          docker run --rm -v "$PWD/opsmender/metrics/probe.sh:/p:ro" alpine:3.20 sh /p snapshot \
+            | python3 -m json.tool > /dev/null
+      - name: Probe rejects unsafe requests
+        run: |
+          for req in "logs ../etc;id 10" "logs web 99999" "shell" "cat /etc/shadow"; do
+            if sudo dash opsmender/metrics/probe.sh $req; then echo "accepted: $req"; exit 1; fi
+          done
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t opsmender:ci .
+      - name: Container starts and is healthy
+        run: |
+          docker run -d --name om -p 8000:8000 opsmender:ci
+          for i in $(seq 1 30); do curl -sf localhost:8000/healthz && exit 0; sleep 1; done
+          docker logs om; exit 1

@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an idea or a new diagnosis rule
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation you ran into, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like OpsMender to do?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example log lines or screenshots
+      description: For new diagnosis rules, paste a few real log lines (secrets removed).
+      render: shell
