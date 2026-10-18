@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Sign in{% endblock %}
+{% block shell %}
+<div class="auth">
+  <div class="card">
+    <div class="brand"><span class="brand-mark">O</span>OpsMender</div>
+    <p class="tag">Your open-source DevOps companion for Coolify</p>
+    {% for level, message in flashes %}<div class="flash {{ level }}">{{ message }}</div>{% endfor %}
+    <form method="post" action="/login">
+      {{ csrf_field() }}
+      <input type="hidden" name="next" value="{{ request.query_params.get('next', '/') }}">
+      <div class="field"><label for="username">Username</label><input id="username" name="username" type="text" autocomplete="username" required autofocus></div>
+      <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="btn primary" type="submit" style="width:100%">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "macros.html" import severity with context %}
+{% block title %}Incidents{% endblock %}
+{% block body_attrs %} data-autorefresh="60"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Incidents</h1><div class="sub">Problems OpsMender detected, with evidence and diagnosis.</div></div>
+</div>
+<div class="tabs">
+  {% for s, label in [('open','Open'),('resolved','Resolved'),('all','All')] %}<a href="?status={{ s }}" class="{{ 'active' if current == s }}">{{ label }}</a>{% endfor %}
+</div>
+<div class="card">
+  {% if rows %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Incident</th><th>Severity</th><th>Status</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
+    <tbody>
+    {% for i in rows %}
+      <tr>
+        <td><a href="/incidents/{{ i.id }}"><strong>{{ i.title }}</strong></a><div class="small dim">{{ (i.summary or '')[:140] }}</div></td>
+        <td>{{ severity(i.severity) }}</td>
+        <td><span class="badge b-{{ i.status }}">{{ i.status }}</span></td>
+        <td class="small nowrap" title="{{ i.first_seen|when }}">{{ i.first_seen|ago }}</td>
+        <td class="small nowrap" title="{{ i.last_seen|when }}">{{ i.last_seen|ago }}{% if i.occurrences > 1 %} · {{ i.occurrences }}×{% endif %}</td>
+        <td class="small">{% if i.ai_diagnosis %}<span class="badge b-info plain">AI</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty">{{ 'No open incidents. Everything looks good.' if current == 'open' else 'Nothing here.' }}</div>{% endif %}
+</div>
+{% endblock %}

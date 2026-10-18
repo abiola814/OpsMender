@@ -1,0 +1,44 @@
+{% macro status_badge(status) -%}
+  {%- set h = status|health -%}
+  <span class="badge b-{{ h }}" title="{{ status or 'unknown' }}">{{ (status or 'unknown').replace(':', ' · ') }}</span>
+{%- endmacro %}
+
+{% macro severity(sev) -%}
+  <span class="badge b-{{ sev }}">{{ sev }}</span>
+{%- endmacro %}
+
+{% macro meter(label, value, warn, crit, text=None) -%}
+  {%- set lvl = level_of(value, warn, crit) -%}
+  <div class="meter">
+    <span>{{ label }}</span>
+    <div class="bar"><div class="fill {{ lvl }}" style="width: {{ [value or 0, 100]|min }}%"></div></div>
+    <span class="num">{{ text if text else (value|pct) }}</span>
+  </div>
+{%- endmacro %}
+
+{% macro csrf_field() -%}
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+{%- endmacro %}
+
+{% macro event_row(e) -%}
+  <li>
+    <span class="t" title="{{ e.ts|when }}">{{ e.ts|ago }}</span>
+    <span class="dot {{ e.level }}"></span>
+    <span>
+      {%- if e.incident_id %}<a href="/incidents/{{ e.incident_id }}">{{ e.message }}</a>
+      {%- elif e.resource_uuid %}<a href="/resources/{{ e.resource_uuid }}">{{ e.message }}</a>
+      {%- else %}{{ e.message }}{% endif -%}
+    </span>
+  </li>
+{%- endmacro %}
+
+{% macro incident_row(i) -%}
+  <li>
+    <div>
+      <a class="title" href="/incidents/{{ i.id }}">{{ i.title }}</a>
+      <div class="small dim">{{ i.summary or '' }}</div>
+      <div class="small faint">first seen {{ i.first_seen|ago }}{% if i.occurrences > 1 %} · seen {{ i.occurrences }}×{% endif %}{% if i.ai_diagnosis %} · AI diagnosis ready{% endif %}</div>
+    </div>
+    {{ severity(i.severity) }}
+  </li>
+{%- endmacro %}

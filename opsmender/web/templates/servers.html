@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "macros.html" import meter with context %}
+{% block title %}Servers{% endblock %}
+{% block body_attrs %} data-autorefresh="60"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Servers</h1><div class="sub">Every server connected to Coolify.</div></div>
+</div>
+<div class="card">
+  {% if not servers %}<div class="empty">No servers yet. Connect Coolify in Settings.</div>{% else %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Server</th><th>Coolify</th><th style="width:22%">CPU</th><th style="width:22%">Memory</th><th style="width:22%">Disk</th><th class="num">Containers</th></tr></thead>
+    <tbody>
+    {% for s in servers %}
+      <tr>
+        <td><a href="/servers/{{ s.uuid }}"><strong>{{ s.name }}</strong></a><div class="small faint mono">{{ s.ip or '' }}</div></td>
+        <td>{% if s.reachable == 0 %}<span class="badge b-down">unreachable</span>{% elif s.reachable %}<span class="badge b-ok">reachable</span>{% else %}<span class="badge b-unknown">unknown</span>{% endif %}</td>
+        {% if s.metrics_enabled and s.m %}
+          <td>{{ meter('', s.m.cpu_pct, thresholds.cpu_threshold - 20, thresholds.cpu_threshold) }}</td>
+          <td>{{ meter('', s.m.mem_pct, thresholds.mem_threshold - 15, thresholds.mem_threshold, (s.m.mem_used|size) ~ ' / ' ~ (s.m.mem_total|size)) }}</td>
+          <td>{{ meter('', s.m.disk_used_pct, thresholds.disk_threshold - 10, thresholds.disk_threshold) }}</td>
+          <td class="num">{{ s.running }} / {{ s.m.containers|length }}</td>
+        {% else %}
+          <td colspan="4" class="dim small">{% if s.metrics_enabled %}{{ s.last_probe_error or 'Waiting for first snapshot…' }}{% else %}Metrics not enabled · <a href="/servers/{{ s.uuid }}#setup">set up</a>{% endif %}</td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div>
+{% endblock %}

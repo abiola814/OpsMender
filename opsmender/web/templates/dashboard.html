@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "macros.html" import status_badge, severity, meter, event_row, incident_row with context %}
+{% block title %}Overview{% endblock %}
+{% block body_attrs %} data-autorefresh="30"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <div class="sub">Everything Coolify runs for you, in one place.</div>
+  </div>
+</div>
+
+{% if not coolify_configured %}
+<div class="card">
+  <h2>Connect your Coolify instance</h2>
+  <ol class="steps">
+    <li><strong>Create an API token in Coolify.</strong><br><span class="dim">Coolify → Keys &amp; Tokens → API tokens. Read access is enough for monitoring; add write/deploy only if you want OpsMender to restart or redeploy.</span></li>
+    <li><strong>Paste the Coolify URL and token in Settings.</strong><br><span class="dim">OpsMender discovers your servers, applications, services and databases automatically.</span></li>
+    <li><strong>Optional: enable server metrics.</strong><br><span class="dim">Run one setup command per server to see CPU, memory, disk and per-container usage. Nothing keeps running on the server.</span></li>
+  </ol>
+  <a class="btn primary" href="/settings#coolify">Connect Coolify</a>
+</div>
+{% else %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Servers</div>
+    <div class="value">{{ servers|length }}</div>
+    <div class="meta">
+      <span>{{ servers|selectattr('reachable', 'equalto', 1)|list|length }} reachable</span>
+      <span>{{ servers|selectattr('metrics_enabled')|list|length }} with metrics</span>
+    </div>
+  </div>
+  <div class="tile">
+    <div class="label">Resources</div>
+    <div class="value">{{ resources|length }}</div>
+    <div class="meta">
+      <a href="/resources?state=ok"><span class="badge b-ok">{{ health_counts.get('ok', 0) }} running</span></a>
+      {% if health_counts.get('warning') %}<a href="/resources?state=warning"><span class="badge b-warning">{{ health_counts['warning'] }} unhealthy</span></a>{% endif %}
+      {% if health_counts.get('down') %}<a href="/resources?state=down"><span class="badge b-down">{{ health_counts['down'] }} down</span></a>{% endif %}
+      {% if health_counts.get('stopped') %}<a href="/resources?state=stopped"><span class="badge b-stopped">{{ health_counts['stopped'] }} stopped</span></a>{% endif %}
+    </div>
+  </div>
+  <div class="tile">
+    <div class="label">Open incidents</div>
+    <div class="value">{{ open_counts.get('critical', 0) + open_counts.get('warning', 0) }}</div>
+    <div class="meta">
+      <span class="badge b-critical">{{ open_counts.get('critical', 0) }} critical</span>
+      <span class="badge b-warning">{{ open_counts.get('warning', 0) }} warning</span>
+    </div>
+  </div>
+  <div class="tile">
+    <div class="label">Deployments · 24h</div>
+    <div class="value">{{ deploy_ok + deploy_failed }}</div>
+    <div class="meta">
+      <span class="badge b-ok">{{ deploy_ok }} succeeded</span>
+      {% if deploy_failed %}<span class="badge b-down">{{ deploy_failed }} failed</span>{% endif %}
+      {% if running_deploys %}<span class="badge b-info">{{ running_deploys|length }} running</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Servers</h2><a class="small" href="/servers">All servers →</a></div>
+      {% if not servers %}<div class="empty">No servers found in Coolify yet.</div>{% endif %}
+      <div class="grid g2">
+        {% for s in servers %}
+        <a class="card server-card" href="/servers/{{ s.uuid }}" style="color:inherit;text-decoration:none">
+          <div class="card-head" style="margin-bottom:4px">
+            <div><div class="name">{{ s.name }}</div><div class="addr">{{ s.ip or '' }}</div></div>
+            {% if s.reachable == 0 %}<span class="badge b-down">unreachable</span>
+            {% elif s.metrics_enabled and s.last_probe_error %}<span class="badge b-warning">metrics error</span>
+            {% else %}<span class="badge b-ok">online</span>{% endif %}
+          </div>
+          {% if s.metrics_enabled and s.m %}
+            <div class="meters">
+              {{ meter('CPU', s.m.cpu_pct, thresholds.cpu_threshold - 20, thresholds.cpu_threshold) }}
+              {{ meter('RAM', s.m.mem_pct, thresholds.mem_threshold - 15, thresholds.mem_threshold) }}
+              {{ meter('Disk', s.m.disk_used_pct, thresholds.disk_threshold - 10, thresholds.disk_threshold) }}
+            </div>
+            <div style="margin-top:10px">{{ s.series|chart('cpu') }}</div>
+            <div class="small faint">CPU, last hour · {{ s.running }} containers running</div>
+          {% elif s.metrics_enabled %}
+            <p class="small dim" style="margin-top:10px">Waiting for the first metrics snapshot…</p>
+          {% else %}
+            <p class="small dim" style="margin-top:10px">Metrics not enabled. Open the server to set them up.</p>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Needs attention</h2><a class="small" href="/resources">All resources →</a></div>
+      {% if attention %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Resource</th><th>Status</th><th>Changed</th></tr></thead>
+        <tbody>
+        {% for r in attention %}
+          <tr><td><a href="/resources/{{ r.uuid }}">{{ r.name }}</a> <span class="kind">{{ r.kind }}</span></td>
+              <td>{{ status_badge(r.status) }}</td><td class="dim small">{{ r.status_changed_at|ago }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}
+      <div class="empty">All resources look healthy.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Open incidents</h2><a class="small" href="/incidents">All →</a></div>
+      {% if incidents %}<ul class="list">{% for i in incidents %}{{ incident_row(i) }}{% endfor %}</ul>
+      {% else %}<div class="empty">No open incidents. 🎉</div>{% endif %}
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Activity</h2><a class="small" href="/activity">All →</a></div>
+      {% if events %}<ul class="timeline">{% for e in events %}{{ event_row(e) }}{% endfor %}</ul>
+      {% else %}<div class="empty">Nothing yet.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}First-run setup{% endblock %}
+{% block shell %}
+<div class="auth">
+  <div class="card">
+    <div class="brand"><span class="brand-mark">O</span>OpsMender</div>
+    <p class="tag">Create the admin account</p>
+    {% for level, message in flashes %}<div class="flash {{ level }}">{{ message }}</div>{% endfor %}
+    <form method="post" action="/setup">
+      {{ csrf_field() }}
+      <div class="field">
+        <label for="setup_code">Setup code</label>
+        <input id="setup_code" name="setup_code" type="text" autocomplete="off" required autofocus>
+        <div class="help">Printed in the OpsMender container logs (Coolify → this resource → Logs). It stops anyone else from claiming a fresh install.</div>
+      </div>
+      <div class="field"><label for="username">Username</label><input id="username" name="username" type="text" value="admin" required></div>
+      <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" minlength="10" autocomplete="new-password" required>
+        <div class="help">At least 10 characters.</div></div>
+      <div class="field"><label for="password_confirm">Confirm password</label><input id="password_confirm" name="password_confirm" type="password" minlength="10" autocomplete="new-password" required></div>
+      <button class="btn primary" type="submit" style="width:100%">Create account</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

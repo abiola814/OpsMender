@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Settings</h1><div class="sub">Secrets are encrypted at rest and never shown again after saving.</div></div>
+</div>
+
+<div class="grid g2">
+<div class="stack">
+  <div class="card" id="coolify">
+    <h2>Coolify connection</h2>
+    <form method="post" action="/settings/coolify">
+      {{ csrf_field() }}
+      <div class="field"><label for="coolify_url">Coolify URL</label>
+        <input id="coolify_url" name="coolify_url" type="url" value="{{ s.coolify_url }}" placeholder="https://coolify.example.com" required>
+        <div class="help">The address you open Coolify at. If OpsMender runs on the same server and is attached to the <code>coolify</code> network, <code>http://coolify:8080</code> also works.</div></div>
+      <div class="field"><label for="coolify_token">API token</label>
+        <input id="coolify_token" name="coolify_token" type="password" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_token else 'Paste a token from Coolify → Keys & Tokens → API tokens' }}" {{ '' if has_token else 'required' }}>
+        <div class="help">Read access is enough for monitoring. Logs may need the <em>read:sensitive</em> permission. Restart and redeploy need write/deploy.</div></div>
+      <div class="field"><label class="check"><input type="checkbox" name="coolify_verify_tls" {{ 'checked' if s.coolify_verify_tls }}> Verify TLS certificate</label></div>
+      <button class="btn primary" type="submit">Save &amp; test connection</button>
+    </form>
+  </div>
+
+  <div class="card" id="ai">
+    <h2>AI provider</h2>
+    <p class="small dim">Bring your own key. Only incident evidence is sent (log lines are redacted first), and only when you click “Diagnose” or enable automatic diagnosis.</p>
+    <form method="post" action="/settings/ai">
+      {{ csrf_field() }}
+      <div class="field"><label for="ai_provider">Provider</label>
+        <select id="ai_provider" name="ai_provider" data-provider-select>
+          <option value="" {{ 'selected' if not s.ai_provider }}>None (rules only)</option>
+          {% for p in presets %}<option value="{{ p.id }}" data-base-url="{{ p.base_url }}" data-model-hint="{{ p.model_hint }}" data-needs-key="{{ '1' if p.needs_key else '0' }}" {{ 'selected' if s.ai_provider == p.id }}>{{ p.label }}</option>{% endfor %}
+        </select></div>
+      <div class="field"><label for="ai_model">Model</label>
+        <input id="ai_model" name="ai_model" type="text" value="{{ s.ai_model }}" data-model-input>
+        <div class="help" data-model-help>Use the exact model ID from your provider.</div></div>
+      <div class="field"><label for="ai_api_key">API key</label>
+        <input id="ai_api_key" name="ai_api_key" type="password" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_ai_key else 'Paste your API key' }}">
+        {% if has_ai_key %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_key"> Remove saved key</label>{% endif %}</div>
+      <div class="field"><label for="ai_base_url">Base URL <span class="faint">(optional)</span></label>
+        <input id="ai_base_url" name="ai_base_url" type="url" value="{{ s.ai_base_url }}" data-base-url-input>
+        <div class="help">Leave blank to use the provider's default. Needed for “Other OpenAI-compatible”.</div></div>
+      <div class="field"><label class="check"><input type="checkbox" name="ai_auto_diagnose" {{ 'checked' if s.ai_auto_diagnose }}> Diagnose new incidents automatically</label>
+        <div class="help">Uses API credits for every new incident.</div></div>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="submit" name="test" value="1">Save &amp; test</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" id="actions">
+    <h2>Actions</h2>
+    <form method="post" action="/settings/actions">
+      {{ csrf_field() }}
+      <div class="field"><label class="check"><input type="checkbox" name="actions_enabled" {{ 'checked' if s.actions_enabled }}> Allow restart, redeploy, stop and start from OpsMender</label>
+        <div class="help">Off by default. Each action still requires typing the resource name and is written to the audit log.</div></div>
+      <button class="btn" type="submit">Save</button>
+    </form>
+  </div>
+</div>
+
+<div class="stack">
+  <div class="card" id="monitoring">
+    <h2>Monitoring &amp; alerts</h2>
+    <form method="post" action="/settings/monitoring">
+      {{ csrf_field() }}
+      <div class="form-grid">
+        <div class="field"><label for="poll_interval">Coolify sync (s)</label><input id="poll_interval" name="poll_interval" type="number" value="{{ s.poll_interval }}"></div>
+        <div class="field"><label for="metrics_interval">Metrics poll (s)</label><input id="metrics_interval" name="metrics_interval" type="number" value="{{ s.metrics_interval }}"></div>
+        <div class="field"><label for="cpu_threshold">CPU alert (%)</label><input id="cpu_threshold" name="cpu_threshold" type="number" value="{{ s.cpu_threshold }}"></div>
+        <div class="field"><label for="mem_threshold">Memory alert (%)</label><input id="mem_threshold" name="mem_threshold" type="number" value="{{ s.mem_threshold }}"></div>
+        <div class="field"><label for="disk_threshold">Disk alert (%)</label><input id="disk_threshold" name="disk_threshold" type="number" value="{{ s.disk_threshold }}"></div>
+        <div class="field"><label for="sustain_samples">Sustained for (samples)</label><input id="sustain_samples" name="sustain_samples" type="number" value="{{ s.sustain_samples }}"></div>
+        <div class="field"><label for="restart_threshold">Crash loop (restarts / 10 min)</label><input id="restart_threshold" name="restart_threshold" type="number" value="{{ s.restart_threshold }}"></div>
+        <div class="field"><label for="disk_forecast_days">Warn when disk full within (days)</label><input id="disk_forecast_days" name="disk_forecast_days" type="number" value="{{ s.disk_forecast_days }}"></div>
+        <div class="field"><label for="log_lines">Log lines per fetch</label><input id="log_lines" name="log_lines" type="number" value="{{ s.log_lines }}"></div>
+        <div class="field"><label for="log_max_bytes">Max log bytes</label><input id="log_max_bytes" name="log_max_bytes" type="number" value="{{ s.log_max_bytes }}"></div>
+      </div>
+      <button class="btn" type="submit">Save</button>
+    </form>
+  </div>
+
+  <div class="card" id="notifications">
+    <h2>Notifications</h2>
+    <form method="post" action="/settings/notifications">
+      {{ csrf_field() }}
+      <div class="field"><label for="notify_webhook_url">Webhook URL</label>
+        <input id="notify_webhook_url" name="notify_webhook_url" type="url" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_notify else 'Slack or Discord incoming webhook URL' }}">
+        {% if has_notify %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_webhook"> Remove saved webhook</label>{% endif %}</div>
+      <div class="field"><label class="check"><input type="checkbox" name="notify_on_resolve" {{ 'checked' if s.notify_on_resolve }}> Also notify when incidents resolve</label></div>
+      <div class="btn-row"><button class="btn" type="submit">Save</button><button class="btn" type="submit" name="test" value="1">Save &amp; send test</button></div>
+    </form>
+  </div>
+
+  <div class="card" id="webhook">
+    <h2>Instant updates from Coolify <span class="faint small">(optional)</span></h2>
+    <p class="small dim">Without this, OpsMender polls every {{ s.poll_interval }} seconds. Add this URL in Coolify → Notifications → Webhook so deployments and failures show up right away.</p>
+    <div class="copy-wrap"><pre class="code" id="webhook-url">{{ webhook_url }}</pre><button class="btn small" type="button" data-copy="#webhook-url">Copy</button></div>
+    <form method="post" action="/settings/webhook/rotate" style="margin-top:10px">{{ csrf_field() }}<button class="btn small" type="submit">Regenerate URL</button></form>
+  </div>
+
+  <div class="card" id="account">
+    <h2>Account</h2>
+    <form method="post" action="/settings/password">
+      {{ csrf_field() }}
+      <div class="field"><label for="current">Current password</label><input id="current" name="current" type="password" autocomplete="current-password" required></div>
+      <div class="form-grid">
+        <div class="field"><label for="new">New password</label><input id="new" name="new" type="password" minlength="10" autocomplete="new-password" required></div>
+        <div class="field"><label for="confirm_pw">Confirm</label><input id="confirm_pw" name="confirm" type="password" minlength="10" autocomplete="new-password" required></div>
+      </div>
+      <button class="btn" type="submit">Change password</button>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}

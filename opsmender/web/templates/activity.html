@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "macros.html" import event_row with context %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Activity</h1><div class="sub">What happened, and who did what.</div></div>
+</div>
+<div class="split">
+  <div class="card">
+    <h2>Events</h2>
+    {% if events %}<ul class="timeline">{% for e in events %}{{ event_row(e) }}{% endfor %}</ul>{% else %}<div class="empty">Nothing yet.</div>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Audit log</h2>
+    {% if audit %}
+    <ul class="list">{% for a in audit %}
+      <li>
+        <div>
+          <div><strong>{{ a.username or 'system' }}</strong> · {{ a.action.replace('_', ' ') }}{% if a.target_name %} · {{ a.target_name }}{% endif %}</div>
+          {% if a.detail %}<div class="small dim">{{ a.detail[:200] }}</div>{% endif %}
+          <div class="small faint" title="{{ a.ts|when }}">{{ a.ts|ago }}</div>
+        </div>
+        <span class="badge b-{{ 'ok' if a.result == 'ok' else 'down' }}">{{ a.result }}</span>
+      </li>
+    {% endfor %}</ul>
+    {% else %}<div class="empty">No actions yet.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

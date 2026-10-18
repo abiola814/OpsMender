@@ -1,0 +1,60 @@
+{% from "macros.html" import csrf_field with context %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}OpsMender{% endblock %} · OpsMender</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ version }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232dd4bf'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='800' text-anchor='middle' fill='%23062b27'%3EO%3C/text%3E%3C/svg%3E">
+  <script src="/static/app.js?v={{ version }}" defer></script>
+</head>
+<body{% block body_attrs %}{% endblock %}>
+{% block shell %}
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">O</span>OpsMender</a>
+    <nav class="nav">
+      {% set crit = open_counts.get('critical', 0) %}{% set warn = open_counts.get('warning', 0) %}
+      <a href="/" class="{{ 'active' if path == '/' }}">Overview</a>
+      <a href="/servers" class="{{ 'active' if path.startswith('/servers') }}">Servers</a>
+      <a href="/resources" class="{{ 'active' if path.startswith('/resources') }}">Resources</a>
+      <a href="/incidents" class="{{ 'active' if path.startswith('/incidents') }}">Incidents
+        {% if crit %}<span class="count">{{ crit }}</span>{% elif warn %}<span class="count warn">{{ warn }}</span>{% endif %}</a>
+      <a href="/activity" class="{{ 'active' if path.startswith('/activity') }}">Activity</a>
+      <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
+    </nav>
+    <div class="sidebar-foot">
+      OpsMender v{{ version }}<br>
+      {% if status.coolify_version %}Coolify {{ status.coolify_version }}<br>{% endif %}
+      Using {{ '%.0f'|format(self_usage.rss_mb) }} MB RAM
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div class="sync">
+        {% if not coolify_configured %}
+          <span class="badge b-warning">Coolify not connected</span>
+        {% elif status.last_sync_error %}
+          <span class="badge b-down" title="{{ status.last_sync_error }}">Sync failing</span>
+          <span class="dim">{{ status.last_sync_error[:90] }}</span>
+        {% else %}
+          <span class="badge b-ok">Connected</span>
+          <span>Synced {{ status.last_sync_at|ago }}</span>
+        {% endif %}
+      </div>
+      <div class="btn-row">
+        {% if coolify_configured %}
+        <form method="post" action="/sync" class="inline">{{ csrf_field() }}<button class="btn small" type="submit">Sync now</button></form>
+        {% endif %}
+        <form method="post" action="/logout" class="inline">{{ csrf_field() }}<button class="btn small" type="submit" title="Signed in as {{ user }}">Sign out</button></form>
+      </div>
+    </header>
+    <main class="content">
+      {% for level, message in flashes %}<div class="flash {{ level }}">{{ message }}</div>{% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}
+</body>
+</html>

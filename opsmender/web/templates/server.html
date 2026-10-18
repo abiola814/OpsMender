@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "macros.html" import status_badge, meter, csrf_field, incident_row with context %}
+{% block title %}{{ server.name }}{% endblock %}
+{% block body_attrs %}{% if server.metrics_enabled and m %} data-autorefresh="60"{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/servers">Servers</a> /</div>
+    <h1>{{ server.name }}</h1>
+    <div class="sub mono">{{ server.ssh_user or 'root' }}@{{ server.ip }}:{{ server.port or 22 }}{% if m.hostname %} · {{ m.hostname }}{% endif %}{% if m.ncpu %} · {{ m.ncpu }} vCPU{% endif %}{% if m.uptime_s %} · up {{ (m.uptime_s / 86400)|round(1) }} days{% endif %}</div>
+  </div>
+  <div class="btn-row">
+    {% if server.reachable == 0 %}<span class="badge b-down">Coolify can't reach it</span>{% elif server.reachable %}<span class="badge b-ok">Reachable by Coolify</span>{% endif %}
+    {% if server.metrics_enabled %}<span class="badge {{ 'b-warning' if server.last_probe_error else 'b-ok' }}">Metrics {{ 'error' if server.last_probe_error else 'on' }}</span>{% endif %}
+  </div>
+</div>
+
+{% if server.metrics_enabled and m %}
+<div class="tabs">
+  {% for r in ranges %}<a href="?range={{ r }}" class="{{ 'active' if r == range_key }}">{{ r }}</a>{% endfor %}
+</div>
+<div class="grid g3">
+  <div class="card chart-box">
+    <div class="head"><h2>CPU</h2><span class="big">{{ m.cpu_pct|pct }}</span></div>
+    {{ series|chart('cpu', 120) }}
+    <div class="small faint">Load {{ m.load|join(' · ') }}</div>
+  </div>
+  <div class="card chart-box">
+    <div class="head"><h2>Memory</h2><span class="big">{{ m.mem_pct|pct }}</span></div>
+    {{ series|chart('mem', 120) }}
+    <div class="small faint">{{ m.mem_used|size }} of {{ m.mem_total|size }}{% if m.swap_used %} · swap {{ m.swap_used|size }}{% endif %}</div>
+  </div>
+  <div class="card chart-box">
+    <div class="head"><h2>Root disk</h2><span class="big">{{ m.disk_used_pct|pct }}</span></div>
+    {{ series|chart('disk', 120) }}
+    <div class="small faint">{{ m.disk_used|size }} of {{ m.disk_total|size }}
+      {% if forecast and forecast.days_left < 365 %} · full in ~{{ forecast.days_left|round(0)|int }} days at the current rate{% elif forecast %} · stable{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Containers</h2><span class="small faint">Updated {{ server.last_probe_at|ago }}</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Container</th><th>State</th><th class="num">CPU</th><th class="num">Memory</th><th class="num">Restarts</th><th>Started</th></tr></thead>
+    <tbody>
+    {% for c in m.containers %}
+      <tr>
+        <td>{% if c.resource %}<a href="/resources/{{ c.resource.uuid }}">{{ c.resource.name }}</a> <span class="kind">{{ c.resource.kind }}</span><div class="small faint mono">{{ c.name }}</div>
+            {% else %}<span class="mono">{{ c.name }}</span>{% endif %}</td>
+        <td><span class="badge b-{{ 'ok' if c.state == 'running' and c.health != 'unhealthy' else ('warning' if c.state == 'running' else ('down' if c.state == 'restarting' or (c.exit_code and c.exit_code != 0) else 'stopped')) }}">{{ c.state }}{% if c.health %} · {{ c.health }}{% endif %}</span>
+            {% if c.oom_killed %}<span class="badge b-down">OOM killed</span>{% endif %}
+            {% if c.state != 'running' and c.exit_code %}<span class="small faint">exit {{ c.exit_code }}</span>{% endif %}</td>
+        <td class="num">{{ c.cpu_pct|pct(1) if c.cpu_pct is not none else '–' }}</td>
+        <td class="num">{{ c.mem_bytes|size }}{% if c.mem_limit %}<span class="faint"> / {{ c.mem_limit|size }}</span>{% endif %}</td>
+        <td class="num">{{ c.restarts }}</td>
+        <td class="small dim">{{ c.started_at|ago if c.state == 'running' else '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">{{ 'No containers.' if m.docker else 'Docker not found or not readable by the probe.' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% if m.disks|length > 1 %}
+<div class="card">
+  <h2>Filesystems</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Mount</th><th style="width:40%">Used</th><th class="num">Size</th></tr></thead>
+    <tbody>{% for d in m.disks %}<tr><td class="mono">{{ d.mount }}</td><td>{{ meter('', d.pct, thresholds.disk_threshold - 10, thresholds.disk_threshold) }}</td><td class="num">{{ d.total|size }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="grid g2" style="margin-top:16px">
+  <div class="card">
+    <h2>Resources on this server</h2>
+    {% if hosted %}<ul class="list">{% for r in hosted %}
+      <li><span><a href="/resources/{{ r.uuid }}">{{ r.name }}</a> <span class="kind">{{ r.kind }}</span></span>{{ status_badge(r.status) }}</li>
+    {% endfor %}</ul>{% else %}<div class="empty">None reported by Coolify.</div>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Incidents</h2>
+    {% if incidents %}<ul class="list">{% for i in incidents %}{{ incident_row(i) }}{% endfor %}</ul>{% else %}<div class="empty">No incidents for this server.</div>{% endif %}
+  </div>
+</div>
+
+<div class="card" id="setup" style="margin-top:16px">
+  <div class="card-head"><h2>Metrics collection</h2>
+    {% if server.metrics_enabled %}
+    <form method="post" action="/servers/{{ server.uuid }}/metrics/disable" class="inline">{{ csrf_field() }}<button class="btn small danger" type="submit">Disable</button></form>
+    {% endif %}
+  </div>
+  {% if not server.metrics_enabled %}
+    <p class="dim">See CPU, memory, disk and per-container usage. OpsMender connects over SSH once a minute, runs a small read-only script that prints a snapshot, and disconnects. No agent keeps running and nothing is installed besides that script.</p>
+    <form method="post" action="/servers/{{ server.uuid }}/metrics/enable">{{ csrf_field() }}<button class="btn primary" type="submit">Enable metrics</button></form>
+  {% else %}
+    {% if server.last_probe_error %}<div class="flash error">Last attempt: {{ server.last_probe_error }}</div>{% endif %}
+    <ol class="steps">
+      <li><strong>Run this once on the server as root</strong> (from Coolify's terminal for this server, or over SSH).
+        <div class="dim small" style="margin:4px 0 8px">It creates a restricted <code>opsmender</code> user that can only run the read-only probe. Read it before running it.</div>
+        <div class="btn-row" style="margin-bottom:8px">
+          <a class="btn small" href="/servers/{{ server.uuid }}/setup.sh">Download opsmender-setup.sh</a>
+          <span class="small faint">then: <code>sudo sh opsmender-setup.sh</code></span>
+        </div>
+        <details><summary>Public key it authorizes</summary>
+          <div class="copy-wrap"><pre class="code" id="pubkey">{{ public_key }}</pre><button class="btn small" type="button" data-copy="#pubkey">Copy</button></div>
+        </details>
+      </li>
+      <li><strong>Check how OpsMender reaches the server</strong>
+        <form method="post" action="/servers/{{ server.uuid }}/metrics/settings" class="form-grid" style="margin-top:8px">
+          {{ csrf_field() }}
+          <div class="field"><label for="probe_host">Host</label><input id="probe_host" name="probe_host" type="text" value="{{ server.probe_host or server.ip }}">
+            <div class="help">For the server Coolify itself runs on, use <code>host.docker.internal</code>.</div></div>
+          <div class="field"><label for="probe_port">SSH port</label><input id="probe_port" name="probe_port" type="number" value="{{ server.probe_port or 22 }}"></div>
+          <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Save</button></div>
+        </form>
+      </li>
+      <li><strong>Test the connection</strong>
+        <div class="btn-row" style="margin-top:8px">
+          <form method="post" action="/servers/{{ server.uuid }}/metrics/test" class="inline">{{ csrf_field() }}<button class="btn primary" type="submit">Test connection</button></form>
+          {% if server.host_key %}
+            <span class="small faint">Pinned host key <code>{{ server.host_key }}</code></span>
+            <form method="post" action="/servers/{{ server.uuid }}/metrics/reset-hostkey" class="inline">{{ csrf_field() }}<button class="btn small" type="submit">Reset</button></form>
+          {% endif %}
+        </div>
+      </li>
+    </ol>
+  {% endif %}
+</div>
+{% endblock %}

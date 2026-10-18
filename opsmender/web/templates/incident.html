@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "macros.html" import severity, csrf_field, event_row, status_badge with context %}
+{% block title %}{{ inc.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/incidents">Incidents</a> / #{{ inc.id }}</div>
+    <h1>{{ inc.title }}</h1>
+    <div class="sub">
+      {% if resource %}<a href="/resources/{{ resource.uuid }}">{{ resource.name }}</a> <span class="kind">{{ resource.kind }}</span> · {% endif %}
+      {% if server %}<a href="/servers/{{ server.uuid }}">{{ server.name }}</a> · {% endif %}
+      first seen {{ inc.first_seen|ago }}{% if inc.occurrences > 1 %}, seen {{ inc.occurrences }}×{% endif %}
+      {% if inc.resolved_at %} · resolved {{ inc.resolved_at|ago }}{% endif %}
+    </div>
+  </div>
+  <div class="btn-row">
+    {{ severity(inc.severity) }} <span class="badge b-{{ inc.status }}">{{ inc.status }}</span>
+    <form method="post" action="/incidents/{{ inc.id }}/refresh" class="inline">{{ csrf_field() }}<button class="btn small" type="submit">Refresh evidence</button></form>
+    {% if inc.status == 'open' %}
+    <form method="post" action="/incidents/{{ inc.id }}/resolve" class="inline">{{ csrf_field() }}<button class="btn small" type="submit">Mark resolved</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    {% if inc.summary %}<div class="callout">{{ inc.summary }}</div>{% endif %}
+
+    <div class="card" id="ai">
+      <div class="card-head">
+        <h2>AI diagnosis</h2>
+        {% if ai_ready %}
+        <form method="post" action="/incidents/{{ inc.id }}/diagnose" class="inline" data-busy="Diagnosing… this can take up to a minute">
+          {{ csrf_field() }}
+          <button class="btn {{ '' if inc.ai_diagnosis else 'primary' }} small" type="submit" {{ 'disabled' if ai_running }}>{{ 'Run again' if inc.ai_diagnosis else 'Diagnose with AI' }}</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if inc.ai_diagnosis %}
+        <div class="ai-answer">{{ inc.ai_diagnosis|markdown }}</div>
+        <p class="small faint" style="margin-top:12px">{{ inc.ai_model }} · {{ inc.ai_at|ago }}. AI can be wrong; check the evidence before acting.</p>
+      {% elif ai_ready %}
+        <p class="dim">Send the evidence below (secrets redacted) to <strong>{{ ai_label }}</strong> for a root-cause explanation and fix steps.</p>
+      {% else %}
+        <p class="dim">Connect an AI provider (Claude, Gemini, DeepSeek, OpenAI, a local Ollama model…) in <a href="/settings#ai">Settings</a> to get plain-language root-cause analysis. The rule-based findings below work without one.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>What OpsMender found</h2>
+      {% if findings.findings %}
+        {% for f in findings.findings %}
+        <div class="finding {{ f.severity }}">
+          <div class="ftitle">{{ f.title }} <span class="small faint">· {{ f.matches }} matching line{{ 's' if f.matches != 1 }}</span></div>
+          <div class="dim" style="margin-top:4px">{{ f.explanation }}</div>
+          <ul>{% for s in f.suggestions %}<li>{{ s }}</li>{% endfor %}</ul>
+          <div class="sample">{{ f.sample }}</div>
+        </div>
+        {% endfor %}
+      {% elif evidence.logs %}
+        <p class="dim">No known failure pattern matched. The distinct errors below may still point to the cause{% if not ai_ready %}, or connect an AI provider for a deeper look{% endif %}.</p>
+      {% else %}
+        <p class="dim">No logs were attached to this incident.{% if inc.kind in ('high_cpu', 'high_memory', 'disk_pressure', 'disk_forecast') %} It was raised from server metrics; see the numbers below.{% endif %}</p>
+      {% endif %}
+
+      {% if findings.error_groups %}
+        <h3>Distinct errors</h3>
+        <div class="table-wrap"><table>
+          <tbody>{% for g in findings.error_groups %}
+            <tr><td class="num" style="width:56px"><span class="badge b-muted plain">{{ g.count }}×</span></td>
+                <td class="mono small">{{ g.sample }}{% for c in g.context[:3] %}<div class="faint">{{ c }}</div>{% endfor %}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+      {% endif %}
+    </div>
+
+    {% if evidence.logs %}
+    <div class="card">
+      <details>
+        <summary>Log excerpt · {{ evidence.log_source or 'logs' }} ({{ evidence.logs.splitlines()|length }} lines, redacted)</summary>
+        <pre class="logs">{{ evidence.logs }}</pre>
+      </details>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    {% if resource and actions %}
+    <div class="card">
+      <h2>Fix it</h2>
+      {% if actions_enabled %}
+      <form method="post" action="/resources/{{ resource.uuid }}/action">
+        {{ csrf_field() }}
+        <input type="hidden" name="back" value="/incidents/{{ inc.id }}">
+        <div class="field"><label for="confirm">Type <code>{{ resource.name }}</code> to confirm</label><input id="confirm" name="confirm" type="text" autocomplete="off" required></div>
+        <div class="btn-row">{% for a in actions %}<button class="btn {{ 'danger' if a == 'stop' }}" name="action" value="{{ a }}" type="submit">{{ action_labels[a] }}</button>{% endfor %}</div>
+      </form>
+      {% else %}
+      <p class="small dim">Actions are off. Enable them in <a href="/settings#actions">Settings</a> to restart or redeploy from here.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if evidence.metrics or evidence.container or evidence.forecast or evidence.top_containers %}
+    <div class="card">
+      <h2>Evidence</h2>
+      <dl class="kv">
+        {% if evidence.metrics %}
+          {% if evidence.metrics.cpu_pct is not none %}<dt>Server CPU</dt><dd>{{ evidence.metrics.cpu_pct|pct }}</dd>{% endif %}
+          {% if evidence.metrics.mem_pct is not none %}<dt>Server memory</dt><dd>{{ evidence.metrics.mem_pct|pct }}</dd>{% endif %}
+          {% if evidence.metrics.disk_used_pct is not none %}<dt>Root disk</dt><dd>{{ evidence.metrics.disk_used_pct|pct }}</dd>{% endif %}
+          {% if evidence.metrics.load1 is not none %}<dt>Load (1m)</dt><dd>{{ evidence.metrics.load1 }}</dd>{% endif %}
+        {% endif %}
+        {% if evidence.container %}
+          <dt>Container</dt><dd class="mono small">{{ evidence.container.name }}</dd>
+          <dt>State</dt><dd>{{ evidence.container.state }}{% if evidence.container.health %} · {{ evidence.container.health }}{% endif %}</dd>
+          <dt>Restarts</dt><dd>{{ evidence.container.restarts }}</dd>
+          {% if evidence.container.exit_code %}<dt>Exit code</dt><dd>{{ evidence.container.exit_code }}{% if evidence.container.exit_code == 137 %} (killed, often out of memory){% endif %}</dd>{% endif %}
+          {% if evidence.container.oom_killed %}<dt>OOM killed</dt><dd>yes</dd>{% endif %}
+          {% if evidence.container.mem_mb %}<dt>Memory</dt><dd>{{ evidence.container.mem_mb }} MB{% if evidence.container.mem_limit_mb %} / {{ evidence.container.mem_limit_mb }} MB{% endif %}</dd>{% endif %}
+        {% endif %}
+        {% if evidence.forecast %}
+          <dt>Growth</dt><dd>{{ '%.2f'|format(evidence.forecast.per_day) }} pts/day</dd>
+          <dt>Full in</dt><dd>~{{ '%.1f'|format(evidence.forecast.days_left) }} days</dd>
+        {% endif %}
+      </dl>
+      {% if evidence.top_containers %}
+        <h3>Top containers</h3>
+        <ul class="list">{% for c in evidence.top_containers %}
+          <li><span class="mono small">{{ c.name }}</span><span class="small">{{ c.cpu_pct|pct(1) if c.cpu_pct is not none else '' }} {{ (c.mem_mb ~ ' MB') if c.mem_mb else '' }}</span></li>
+        {% endfor %}</ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if evidence.deployments %}
+    <div class="card">
+      <h2>Recent deployments</h2>
+      <ul class="list">{% for d in evidence.deployments %}
+        <li><span class="small">{{ d.created_at|ago }} <span class="mono faint">{{ (d.commit or '')[:8] }}</span></span>
+            <span class="badge b-{{ 'ok' if d.status in ('finished','success') else ('down' if d.status in ('failed','error') else 'muted') }}">{{ d.status }}</span></li>
+      {% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Timeline</h2>
+      {% if events %}<ul class="timeline">{% for e in events %}{{ event_row(e) }}{% endfor %}</ul>{% else %}<div class="empty">No events.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "macros.html" import status_badge, csrf_field, incident_row with context %}
+{% block title %}{{ r.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/resources">Resources</a> / <span class="kind">{{ r.kind }}</span></div>
+    <h1>{{ r.name }}</h1>
+    <div class="sub">
+      {% if r.fqdn %}{% for d in r.fqdn.split(',') %}{% if d.startswith(('http://', 'https://')) %}<a href="{{ d }}" target="_blank" rel="noopener noreferrer">{{ d }}</a>{% else %}{{ d }}{% endif %} {% endfor %}{% endif %}
+      {% if server %}on <a href="/servers/{{ server.uuid }}">{{ server.name }}</a>{% endif %}
+    </div>
+  </div>
+  <div>{{ status_badge(r.status) }}</div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    {% if container %}
+    <div class="grid g2">
+      <div class="card chart-box">
+        <div class="head"><h2>CPU</h2><span class="big">{{ container.cpu_pct|pct(1) if container.cpu_pct is not none else '–' }}</span></div>
+        {{ series|chart('cpu_pct', 120, 100) }}
+        <div class="small faint">Percent of one core, last 6 hours</div>
+      </div>
+      <div class="card chart-box">
+        <div class="head"><h2>Memory</h2><span class="big">{{ container.mem_bytes|size }}</span></div>
+        {{ series|chart('mem_mb', 120, mem_cap) }}
+        <div class="small faint">{% if container.mem_limit %}Limit {{ container.mem_limit|size }}{% else %}No memory limit set{% endif %} · {{ container.restarts }} restarts</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Logs</h2>
+        <div class="btn-row">
+          <span class="small faint" id="log-source"></span>
+          <button class="btn small" type="button" data-load-logs="/resources/{{ r.uuid }}/logs">Load recent logs</button>
+        </div>
+      </div>
+      <p class="small dim" id="log-hint">Logs are fetched on demand only (last lines, secrets redacted). OpsMender never stores a full log stream.</p>
+      <div id="log-analysis"></div>
+      <pre class="logs" id="log-output" hidden></pre>
+    </div>
+
+    {% if r.kind == 'application' %}
+    <div class="card">
+      <h2>Deployments</h2>
+      {% if deployments %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Status</th><th>Commit</th></tr></thead>
+        <tbody>{% for d in deployments %}
+          <tr><td class="small">{{ d.created_at|ago }}</td>
+              <td><span class="badge b-{{ 'ok' if d.status in ('finished','success') else ('down' if d.status in ('failed','error') else ('info' if not d.final else 'muted')) }}">{{ d.status }}</span></td>
+              <td class="mono small">{{ (d.commit_sha or '')[:10] }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<div class="empty">No deployments recorded yet.</div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <h2>Details</h2>
+      <dl class="kv">
+        <dt>Status</dt><dd>{{ r.status or 'unknown' }}</dd>
+        <dt>Changed</dt><dd>{{ r.status_changed_at|ago }}</dd>
+        {% if r.git_repository %}<dt>Repository</dt><dd>{{ r.git_repository }}{% if r.git_branch %} @ {{ r.git_branch }}{% endif %}</dd>{% endif %}
+        {% for key, label in [('build_pack','Build pack'),('ports_exposes','Port'),('image','Image'),('type','Type'),('limits_memory','Memory limit'),('health_check_enabled','Health check')] %}
+          {% if r.raw.get(key) not in (none, '', '0') %}<dt>{{ label }}</dt><dd>{{ r.raw[key] }}</dd>{% endif %}
+        {% endfor %}
+        {% if container %}<dt>Container</dt><dd class="mono small">{{ container.name }}</dd>{% endif %}
+        <dt>UUID</dt><dd class="mono small">{{ r.uuid }}</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Actions</h2>
+      {% if not actions_enabled %}
+        <p class="small dim">Actions are off. Turn them on in <a href="/settings#actions">Settings</a> (your Coolify token also needs write/deploy permission).</p>
+      {% else %}
+        <form method="post" action="/resources/{{ r.uuid }}/action">
+          {{ csrf_field() }}
+          <div class="field"><label for="confirm">Type <code>{{ r.name }}</code> to confirm</label><input id="confirm" name="confirm" type="text" autocomplete="off" required></div>
+          <div class="btn-row">{% for a in actions %}<button class="btn {{ 'danger' if a == 'stop' }}" name="action" value="{{ a }}" type="submit">{{ action_labels[a] }}</button>{% endfor %}</div>
+        </form>
+        <p class="small faint" style="margin-top:8px">Every action is recorded in the activity log.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Incidents</h2>
+      {% if incidents %}<ul class="list">{% for i in incidents %}{{ incident_row(i) }}{% endfor %}</ul>{% else %}<div class="empty">None so far.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

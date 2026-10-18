@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import status_badge with context %}
+{% block title %}Resources{% endblock %}
+{% block body_attrs %} data-autorefresh="60"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Resources</h1><div class="sub">Applications, services and databases managed by Coolify.</div></div>
+</div>
+<div class="tabs">
+  <a href="?state={{ state }}" class="{{ 'active' if not kind }}">All</a>
+  {% for k, n in kinds.items() %}<a href="?kind={{ k }}&state={{ state }}" class="{{ 'active' if kind == k }}">{{ k|capitalize }}s · {{ n }}</a>{% endfor %}
+</div>
+<div class="btn-row" style="margin-bottom:12px">
+  <a class="badge plain {{ 'b-info' if not state else 'b-muted' }}" href="?kind={{ kind }}">any state</a>
+  {% for s, label in [('ok','running'),('warning','unhealthy'),('down','down'),('stopped','stopped'),('unknown','unknown')] %}
+    {% if counts.get(s) %}<a class="badge b-{{ s if state == s else 'muted' }}" href="?kind={{ kind }}&state={{ s }}">{{ counts[s] }} {{ label }}</a>{% endif %}
+  {% endfor %}
+</div>
+<div class="card">
+  {% if rows %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Server</th><th>Domain / Repo</th><th>Changed</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="/resources/{{ r.uuid }}"><strong>{{ r.name }}</strong></a></td>
+        <td><span class="kind">{{ r.kind }}</span></td>
+        <td>{{ status_badge(r.status) }}</td>
+        <td class="small">{% if r.server_uuid %}<a href="/servers/{{ r.server_uuid }}">{{ r.server_name or r.server_uuid }}</a>{% else %}<span class="faint">–</span>{% endif %}</td>
+        <td class="small dim">{{ (r.fqdn or '').split(',')[0] or r.git_repository or '' }}</td>
+        <td class="small faint nowrap">{{ r.status_changed_at|ago }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty">No resources match.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+# OpsMender on Coolify
+#
+# In Coolify: + New → Resource → Public Repository → this repo, build pack "Docker Compose",
+# set a domain for the "opsmender" service, and deploy. (Once a prebuilt image is published,
+# "Docker Compose Empty" with an `image:` line will work too.)
+#
+# On first start, open the domain and enter the setup code printed in the container logs,
+# or set OPSMENDER_ADMIN_USER / OPSMENDER_ADMIN_PASSWORD below to skip that step.
+services:
+  opsmender:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Coolify fills SERVICE_* magic variables; outside Coolify, set your own values.
+      - SERVICE_FQDN_OPSMENDER_8000
+      - OPSMENDER_BASE_URL=${SERVICE_FQDN_OPSMENDER:-}
+      - OPSMENDER_SECRET_KEY=${SERVICE_BASE64_64_OPSMENDER:-}
+      - OPSMENDER_ADMIN_USER=${OPSMENDER_ADMIN_USER:-}
+      - OPSMENDER_ADMIN_PASSWORD=${OPSMENDER_ADMIN_PASSWORD:-}
+      # Optional: prefill the Coolify connection instead of using the Settings page.
+      - OPSMENDER_COOLIFY_URL=${OPSMENDER_COOLIFY_URL:-}
+      - OPSMENDER_COOLIFY_TOKEN=${OPSMENDER_COOLIFY_TOKEN:-}
+    volumes:
+      - opsmender-data:/data
+    extra_hosts:
+      # Lets OpsMender reach the Coolify host itself over SSH for metrics.
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  opsmender-data:
