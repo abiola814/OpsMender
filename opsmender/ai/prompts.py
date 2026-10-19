@@ -15,6 +15,12 @@ def _ts(value: Any) -> str:
         return str(value)
 
 
+def _gb(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    return f"{float(value) / 1e9:.2f} GB"
+
+
 def incident_prompt(incident: dict[str, Any], evidence: dict[str, Any], findings: dict[str, Any],
                     resource: dict[str, Any] | None) -> str:
     parts: list[str] = ["# Incident", f"- Title: {incident['title']}", f"- Kind: {incident['kind']}",
@@ -51,6 +57,22 @@ def incident_prompt(incident: dict[str, Any], evidence: dict[str, Any], findings
     if evidence.get("container"):
         c = evidence["container"]
         parts += ["", "# Container", "- " + ", ".join(f"{k}={v}" for k, v in c.items() if v not in (None, ""))]
+
+    if evidence.get("disk"):
+        d = evidence["disk"]
+        fs = d.get("fs") or {}
+        parts += ["", "# Disk usage breakdown (read-only analysis; nothing has been deleted)",
+                  f"- Filesystem {fs.get('mount')}: {_gb(fs.get('used'))} used of {_gb(fs.get('total'))}, "
+                  f"{_gb(fs.get('avail'))} free",
+                  f"- Docker log driver: {d.get('log_driver') or 'unknown'}, rotation "
+                  f"{'on' if d.get('log_rotation') else 'OFF'}"]
+        for item in d.get("items", []):
+            parts.append(f"- {item['label']}: {_gb(item.get('size'))} total, {_gb(item.get('reclaimable'))} "
+                         f"reclaimable, risk={item['risk']}")
+        for entry in d.get("top_logs", [])[:5]:
+            parts.append(f"- Large container log: {entry.get('name')} {_gb(entry.get('bytes'))}")
+        parts.append("When suggesting cleanup, explain what each step removes and its risk. Never suggest bulk "
+                     "volume deletion; Coolify keeps old images for rollbacks.")
 
     if findings.get("findings"):
         parts += ["", "# Rule-based findings (automatic, may be incomplete)"]

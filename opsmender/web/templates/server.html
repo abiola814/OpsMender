@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import status_badge, meter, csrf_field, incident_row with context %}
+{% from "_disk.html" import disk_breakdown with context %}
 {% block title %}{{ server.name }}{% endblock %}
 {% block body_attrs %}{% if server.metrics_enabled and m %} data-autorefresh="60"{% endif %}{% endblock %}
 {% block content %}
@@ -14,6 +15,10 @@
     {% if server.metrics_enabled %}<span class="badge {{ 'b-warning' if server.last_probe_error else 'b-ok' }}">Metrics {{ 'error' if server.last_probe_error else 'on' }}</span>{% endif %}
   </div>
 </div>
+
+{% if server.metrics_enabled and m and (m.probe_v or 1) < probe_current %}
+<div class="flash warning">This server runs an older version of the OpsMender probe. To enable disk analysis, download the setup script below and run it again (it updates in place).</div>
+{% endif %}
 
 {% if server.metrics_enabled and m %}
 <div class="tabs">
@@ -71,6 +76,19 @@
   </table></div>
 </div>
 {% endif %}
+
+<div class="card" id="disk">
+  <div class="card-head">
+    <h2>Disk usage</h2>
+    <form method="post" action="/servers/{{ server.uuid }}/disk" class="inline" data-busy="Analyzing… (up to a minute)">{{ csrf_field() }}
+      <button class="btn small {{ '' if disk_report else 'primary' }}" type="submit">{{ 'Analyze again' if disk_report else 'Analyze disk usage' }}</button></form>
+  </div>
+  {% if disk_report %}
+    {{ disk_breakdown(disk_report, risk_text) }}
+  {% else %}
+    <p class="dim">See what's using space: Docker images, build cache, stopped containers, volumes, container logs, the system journal and Coolify backups, with what each cleanup would free and what it would cost. This only reads sizes; nothing is deleted.</p>
+  {% endif %}
+</div>
 {% endif %}
 
 <div class="grid g2" style="margin-top:16px">

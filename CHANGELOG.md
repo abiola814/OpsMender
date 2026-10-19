@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Read-only disk usage analysis per server: Docker images, build cache, stopped containers, volumes,
+  container logs, system journal and Coolify backups, each with how much it would free, its risk
+  (safe / low / medium / danger), what removing it means, and the command to do it yourself.
+  Nothing is deleted.
+- Disk-pressure and disk-forecast incidents now include this breakdown automatically, plus
+  findings such as "Build cache: 21 GB can be freed" and "Docker log rotation is off", and pass it to
+  the AI diagnosis.
+- Probe v2 with a `disk` request. Servers running probe v1 show a notice to re-run the setup script.
+
+### Changed
+
+- Existing databases are migrated automatically on start.
+
 ## [0.1.0] - 2026-10-18
 
 ### Added

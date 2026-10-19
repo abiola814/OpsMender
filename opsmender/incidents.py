@@ -14,11 +14,12 @@ from .db import dumps, loads
 from .diagnosis.logs import bound
 from .diagnosis.redact import redact
 from .diagnosis.rules import analyze
-from .metrics import ssh
+from .metrics import disk, ssh
 from .notify import send
 from .runtime import Runtime
 
 log = logging.getLogger("opsmender.incidents")
+DISK_KINDS = {"disk_pressure", "disk_forecast"}
 _tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -152,13 +153,34 @@ async def enrich(rt: Runtime, incident_id: int) -> None:
                                          ("name", "state", "health", "restarts", "oom_killed", "exit_code", "cpu_pct")}
                 if container.get("mem_bytes"):
                     evidence["container"]["mem_mb"] = round(container["mem_bytes"] / 1_048_576)
+        if inc["kind"] in DISK_KINDS and server_uuid and "disk" not in evidence:
+            server = rt.db.one("SELECT * FROM servers WHERE uuid = ?", (server_uuid,))
+            if server and server["metrics_enabled"]:
+                try:
+                    evidence["disk"] = await disk.collect(rt, server)
+                    evidence.pop("disk_error", None)
+                except ssh.ProbeError as exc:
+                    evidence["disk_error"] = str(exc)
     except Exception:  # noqa: BLE001 - evidence is best effort
         log.exception("collecting evidence for incident %s failed", incident_id)
 
     findings = analyze(evidence.get("logs") or "") if evidence.get("logs") else {"findings": [], "error_groups": []}
+    if evidence.get("disk"):
+        disk_findings = disk.findings(evidence["disk"])
+        findings["findings"] = disk_findings + findings["findings"]
+        findings["headline"] = findings.get("headline") or (disk_findings[0]["title"] if disk_findings else None)
     summary = inc["summary"]
     if not summary and findings.get("headline"):
         summary = findings["headline"]
+    if inc["kind"] in DISK_KINDS:
+        report = evidence.get("disk")
+        if report and report.get("low_risk_reclaimable"):
+            summary = (f"Up to {disk.human(report['low_risk_reclaimable'])} can be freed with low-risk cleanups. "
+                       "Nothing has been deleted.")
+        elif report:
+            summary = findings.get("headline") or "No large low-risk cleanup found; see the breakdown below."
+        elif evidence.get("disk_error"):
+            summary = f"Couldn't analyze disk usage: {evidence['disk_error']}"
     rt.db.execute("UPDATE incidents SET evidence = ?, findings = ?, summary = ? WHERE id = ?",
                   (dumps(evidence), dumps(findings), summary, incident_id))
 

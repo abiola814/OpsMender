@@ -13,10 +13,12 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from jinja2 import Undefined
 from markupsafe import Markup
 
 from .. import __version__
 from ..adapters.base import health_of
+from ..metrics.disk import human as dsize
 from ..runtime import Runtime
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -140,9 +142,13 @@ def size(value: Any) -> str:
 
 
 def pct(value: Any, digits: int = 0) -> str:
-    if value is None:
+    # None, or a field missing from older stored data (Jinja Undefined raises its own error on float()).
+    if value is None or isinstance(value, Undefined):
         return "–"
-    return f"{float(value):.{digits}f}%"
+    try:
+        return f"{float(value):.{digits}f}%"
+    except (TypeError, ValueError):
+        return "–"
 
 
 def level_of(value: float | None, warn: float, crit: float) -> str:
@@ -253,5 +259,6 @@ def markdown(text: str | None) -> Markup:
     return Markup("\n".join(out))
 
 
-TEMPLATES.env.filters.update(ago=ago, when=when, size=size, pct=pct, chart=chart, health=health, markdown=markdown)
+TEMPLATES.env.filters.update(ago=ago, when=when, size=size, dsize=dsize, pct=pct, chart=chart, health=health,
+                             markdown=markdown)
 TEMPLATES.env.globals.update(level_of=level_of)

@@ -97,8 +97,8 @@ def evaluate_server(rt: Runtime, server: dict[str, Any], current: dict[str, Any]
     if disk is not None and disk >= disk_t:
         open_incident(rt, fingerprint=f"disk:{uuid}", kind="disk_pressure",
                       severity="critical" if disk >= 95 else "warning",
-                      title=f"Disk {disk:.0f}% full on {name}", server_uuid=uuid, enrich_now=False,
-                      summary="Clean up old Docker images and build cache, or enable log rotation.",
+                      title=f"Disk {disk:.0f}% full on {name}", server_uuid=uuid,
+                      summary="OpsMender is checking what is using the space (read-only).",
                       evidence={"metrics": _metric_evidence(current), "disks": current.get("disks")})
     elif disk is not None and disk < disk_t - 2:
         resolve_incident(rt, f"disk:{uuid}", f"disk at {disk:.0f}%")
@@ -147,7 +147,7 @@ def check_disk_forecasts(rt: Runtime) -> None:
                           title=f"Disk on {server['name']} will be full in ~{forecast['days_left']:.1f} days",
                           summary=f"Growing {forecast['per_day']:.2f} percentage points per day, "
                                   f"now {forecast['current']:.0f}% used.",
-                          server_uuid=server["uuid"], enrich_now=False, evidence={"forecast": forecast})
+                          server_uuid=server["uuid"], evidence={"forecast": forecast})
         elif forecast is None or forecast["days_left"] > horizon * 2:
             resolve_incident(rt, fp, "disk growth slowed")
 

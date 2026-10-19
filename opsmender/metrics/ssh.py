@@ -79,6 +79,16 @@ async def snapshot(host: str, port: int, private_pem: str, known_host_key: str |
     return result.host_key, data
 
 
+async def disk(host: str, port: int, private_pem: str, known_host_key: str | None) -> dict[str, Any]:
+    # `docker system df` sizes every volume, which can take a while on busy hosts.
+    result = await run_probe(host, port, private_pem, known_host_key, "disk", timeout=90.0)
+    line = result.output.strip().splitlines()[-1] if result.output.strip() else ""
+    try:
+        return json.loads(line)
+    except ValueError as exc:
+        raise ProbeError(f"Probe returned invalid JSON: {line[:200]!r}") from exc
+
+
 async def container_logs(host: str, port: int, private_pem: str, known_host_key: str | None,
                          container: str, lines: int) -> str:
     if not _NAME_RE.match(container):

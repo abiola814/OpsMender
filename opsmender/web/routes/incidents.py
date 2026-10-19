@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ...ai.providers import AIError
 from ...db import dumps, loads
 from ...incidents import ai_config, diagnose, enrich, resource_row
+from ...metrics.disk import RISK_TEXT
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
 from .resources import ACTION_LABELS, actions_for
 
@@ -42,6 +43,7 @@ async def incident_detail(request: Request, incident_id: int, user: str = Depend
         actions_enabled=rt.settings.bool("actions_enabled"),
         actions=actions_for(resource) if resource else [], action_labels=ACTION_LABELS,
         events=rt.db.all("SELECT * FROM events WHERE incident_id = ? ORDER BY ts", (incident_id,)),
+        risk_text=RISK_TEXT,
     )
 
 
@@ -68,7 +70,7 @@ async def refresh_evidence(request: Request, incident_id: int, user: str = Depen
         raise HTTPException(404, "Incident not found")
     evidence = loads(inc["evidence"], {}) or {}
     # Keep deployment build logs (they don't change); re-fetch runtime logs, metrics and container state.
-    keep = {k: v for k, v in evidence.items() if k in {"deployment_uuid", "forecast"} or
+    keep = {k: v for k, v in evidence.items() if k in {"deployment_uuid", "forecast", "disks", "top_containers"} or
             (k in {"logs", "log_source"} and evidence.get("log_source") == "Coolify deployment log")}
     rt.db.execute("UPDATE incidents SET evidence = ? WHERE id = ?", (dumps(keep), incident_id))
     await enrich(rt, incident_id)

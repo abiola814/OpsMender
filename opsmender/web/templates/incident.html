@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import severity, csrf_field, event_row, status_badge with context %}
+{% from "_disk.html" import disk_breakdown with context %}
 {% block title %}{{ inc.title }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -51,10 +52,11 @@
       {% if findings.findings %}
         {% for f in findings.findings %}
         <div class="finding {{ f.severity }}">
-          <div class="ftitle">{{ f.title }} <span class="small faint">· {{ f.matches }} matching line{{ 's' if f.matches != 1 }}</span></div>
+          <div class="ftitle">{{ f.title }}{% if f.matches %} <span class="small faint">· {{ f.matches }} matching line{{ 's' if f.matches != 1 }}</span>{% endif %}</div>
           <div class="dim" style="margin-top:4px">{{ f.explanation }}</div>
           <ul>{% for s in f.suggestions %}<li>{{ s }}</li>{% endfor %}</ul>
-          <div class="sample">{{ f.sample }}</div>
+          {% if f.sample %}<div class="sample">{{ f.sample }}</div>{% endif %}
+          {% if f.command %}<details><summary class="small">Command to do it yourself</summary><pre class="code">{{ f.command }}</pre></details>{% endif %}
         </div>
         {% endfor %}
       {% elif evidence.logs %}
@@ -73,6 +75,15 @@
         </table></div>
       {% endif %}
     </div>
+
+    {% if evidence.disk %}
+    <div class="card">
+      <h2>What is using the space</h2>
+      {{ disk_breakdown(evidence.disk, risk_text) }}
+    </div>
+    {% elif evidence.disk_error %}
+    <div class="card"><h2>Disk usage</h2><p class="dim">{{ evidence.disk_error }}</p></div>
+    {% endif %}
 
     {% if evidence.logs %}
     <div class="card">

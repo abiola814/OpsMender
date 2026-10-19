@@ -8,6 +8,8 @@ deployment and incident, with plain-language diagnosis from the AI provider you 
 - **Server and container metrics**: CPU, memory, disk, restarts and OOM kills, with no agent left running.
 - **Incidents with evidence**: failed deployments, crashes, crash loops, unhealthy containers,
   high CPU/memory, full disks, and a disk-full forecast.
+- **Disk usage analysis**: see what's filling the disk (images, build cache, logs, volumes, backups),
+  how much each cleanup would free and how risky it is. Read-only.
 - **Rule-based diagnosis, free**: about 20 known failure patterns (database refused, out of memory,
   port in use, missing module, missing env var…) explained with concrete fix steps.
 - **AI root-cause analysis, bring your own key**: Claude, Gemini, DeepSeek, OpenAI, OpenRouter,
@@ -62,7 +64,8 @@ as root on that server. It:
 4. authorizes OpsMender's own SSH key with `restrict` and a forced command. The key can't open a
    shell, allocate a terminal, forward ports or run anything except the probe.
 
-The probe accepts two requests: `snapshot`, and `logs <container> <lines>` (strictly validated).
+The probe accepts three requests: `snapshot`, `disk` (sizes only), and `logs <container> <lines>`
+(strictly validated). It never deletes or changes anything.
 Host keys are trusted on first use and then pinned.
 
 For the server Coolify itself runs on, use `host.docker.internal` as the host. The compose file

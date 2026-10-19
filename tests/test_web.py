@@ -106,6 +106,30 @@ def test_actions_need_opt_in_and_typed_confirmation(client, fake):
         {"action": "restart", "result": "ok"}
 
 
+def test_server_disk_analysis_page(client, monkeypatch):
+    from opsmender.metrics import ssh
+    from test_disk import RAW
+
+    async def fake_disk(*args):
+        return RAW
+    monkeypatch.setattr(ssh, "disk", fake_disk)
+    setup_admin(client)
+    asyncio.run(sync(client.rt))
+    client.rt.settings.set("ssh_private_key", __import__("opsmender.metrics.ssh", fromlist=["x"]).generate_keypair()[0])
+    from opsmender.db import dumps
+    from opsmender.metrics.compute import compute
+    from test_metrics import snap
+    current = compute(snap(1000, 10_000, 8_000, usec=0), {**snap(1060, 11_000, 8_250, usec=30_000_000), "v": 2})
+    client.rt.db.execute("UPDATE servers SET metrics_enabled = 1, current_metrics = ? WHERE uuid = 'srv1'",
+                         (dumps(current),))
+    page = client.get("/servers/srv1")
+    assert "Analyze disk usage" in page.text
+    r = client.post("/servers/srv1/disk", data={"csrf": csrf_of(page.text)})
+    assert "Nothing was deleted" in r.text
+    assert "Build cache" in r.text and "Unused volumes" in r.text and "danger" in r.text
+    assert "docker builder prune" in r.text
+
+
 def test_webhook_requires_secret_token(client):
     setup_admin(client)
     client.get("/settings")

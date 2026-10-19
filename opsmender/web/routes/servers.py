@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from ...db import loads
-from ...metrics import ssh
+from ...metrics import disk, ssh
 from ...metrics.installer import install_script
 from ...metrics.store import disk_forecast, disk_series, history
 from ...monitor.metrics import poll_server
@@ -56,6 +56,7 @@ async def server_detail(request: Request, uuid: str, user: str = Depends(current
         series=history(rt.db, uuid, hours=hours) if server["metrics_enabled"] else [],
         forecast=disk_forecast(disk_series(rt.db, uuid)) if server["metrics_enabled"] else None,
         public_key=public_key,
+        disk_report=disk.report_for(rt, server), risk_text=disk.RISK_TEXT, probe_current=disk.PROBE_VERSION,
         hosted=rt.db.all("SELECT * FROM resources WHERE server_uuid = ? AND missing = 0 ORDER BY name", (uuid,)),
         incidents=rt.db.all("SELECT * FROM incidents WHERE server_uuid = ? ORDER BY status = 'open' DESC,"
                             " last_seen DESC LIMIT 10", (uuid,)),
@@ -141,3 +142,19 @@ async def setup_script(request: Request, uuid: str, user: str = Depends(current_
     _server(rt, uuid)
     script = install_script(ensure_keypair(rt))
     return PlainTextResponse(script, headers={"Content-Disposition": 'attachment; filename="opsmender-setup.sh"'})
+
+
+@router.post("/servers/{uuid}/disk")
+async def analyze_disk(request: Request, uuid: str, user: str = Depends(current_user)):
+    await form_with_csrf(request)
+    rt = rt_of(request)
+    server = _server(rt, uuid)
+    try:
+        report = await disk.collect(rt, server)
+    except ssh.ProbeError as exc:
+        flash(request, f"Disk analysis failed: {exc}", "error")
+        return redirect(f"/servers/{uuid}#disk")
+    low = report["low_risk_reclaimable"]
+    flash(request, (f"Analysis done. Up to {disk.human(low)} can be freed with low-risk cleanups. "
+                    "Nothing was deleted.") if low else "Analysis done. Nothing was deleted.", "success")
+    return redirect(f"/servers/{uuid}#disk")

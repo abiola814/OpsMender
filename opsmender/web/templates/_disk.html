@@ -1,0 +1,59 @@
+{# Disk usage breakdown, shared by the server page and disk incidents. Expects `report`. #}
+{% macro disk_breakdown(report, risk_text) -%}
+  {% set fs = report.fs %}
+  {% if fs.total %}
+  <div class="meter" style="grid-template-columns: max-content 1fr max-content; margin-bottom: 14px">
+    <span class="mono small">{{ fs.mount }}</span>
+    <div class="bar"><div class="fill {{ level_of(fs.pct, 75, 90) }}" style="width: {{ [fs.pct or 0, 100]|min }}%"></div></div>
+    <span class="num">{{ fs.used|dsize }} used · {{ fs.avail|dsize }} free</span>
+  </div>
+  {% endif %}
+
+  {% if report.low_risk_reclaimable %}
+  <div class="callout" style="margin-bottom: 14px">
+    Up to <strong>{{ report.low_risk_reclaimable|dsize }}</strong> can be freed with safe or low-risk cleanups.
+    <span class="dim">OpsMender has not deleted anything.</span>
+  </div>
+  {% endif %}
+
+  {% if report["items"] %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>What</th><th class="num">Size</th><th class="num">Can free</th><th>Risk</th><th>What removing it means</th></tr></thead>
+    <tbody>
+    {% for item in report["items"] %}
+      <tr>
+        <td><strong>{{ item.label }}</strong>{% if item.get('count') is not none %}<div class="small faint">{{ item['count'] }} item{{ 's' if item['count'] != 1 }}{% if item.get('active') is not none %}, {{ item['active'] }} in use{% endif %}</div>{% endif %}</td>
+        <td class="num">{{ item.size|dsize }}</td>
+        <td class="num">{{ item.reclaimable|dsize if item.reclaimable is not none else 'review' }}</td>
+        <td><span class="badge risk-{{ item.risk }}" title="{{ risk_text[item.risk] }}">{{ item.risk }}</span></td>
+        <td class="small">{{ item.explanation }}
+          <details style="margin-top: 4px"><summary class="small">Command to do it yourself</summary><pre class="code">{{ item.command }}</pre></details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+    <div class="empty">Docker isn't installed or readable on this server, and no large log or backup folders were found.</div>
+  {% endif %}
+
+  {% if report.docker %}
+  <h3>Log rotation</h3>
+  {% if report.log_rotation %}
+    <p class="small"><span class="badge b-ok">on</span> <span class="dim">Driver <code>{{ report.log_driver }}</code>. Container logs can't grow forever.</span></p>
+  {% else %}
+    <p class="small"><span class="badge b-warning">off</span> <span class="dim">Driver <code>{{ report.log_driver or 'json-file' }}</code> with no size limit in <code>/etc/docker/daemon.json</code>. Container logs grow until the disk is full.</span></p>
+  {% endif %}
+  {% endif %}
+
+  {% if report.top_logs %}
+  <h3>Largest container logs</h3>
+  <div class="table-wrap"><table>
+    <tbody>{% for entry in report.top_logs[:8] %}
+      <tr><td>{% if entry.resource %}<a href="/resources/{{ entry.resource.uuid }}">{{ entry.resource.name }}</a> <span class="kind">{{ entry.resource.kind }}</span><div class="small faint mono">{{ entry.name }}</div>{% else %}<span class="mono small">{{ entry.name }}</span>{% endif %}</td>
+          <td class="num">{{ entry.bytes|dsize }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  <p class="small faint" style="margin-top: 10px">Analyzed {{ report.ts|ago }}. Read-only: OpsMender only measured. Cleanup with approval is coming in the next release.</p>
+{%- endmacro %}

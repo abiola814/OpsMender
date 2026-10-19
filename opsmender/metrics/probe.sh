@@ -1,9 +1,10 @@
 #!/bin/sh
-# OpsMender probe v1. Read-only.
+# OpsMender probe v2. Read-only.
 #
-# Invoked by sshd as the forced command for the opsmender user. It accepts exactly two requests:
+# Invoked by sshd as the forced command for the opsmender user. It accepts exactly three requests:
 #   snapshot                  print one JSON snapshot of host + container resource counters
 #   logs <container> <lines>  print the most recent log lines of one container
+#   disk                      print one JSON report of what is using disk space (Docker, logs, backups)
 # Anything else is refused. Nothing is written to disk and nothing keeps running afterwards.
 set -u
 set -f
@@ -27,6 +28,7 @@ if [ "$(id -u)" != "0" ]; then
   set -- ${SSH_ORIGINAL_COMMAND:-snapshot}
   case "${1:-snapshot}" in
     snapshot) exec sudo -n "$SELF" snapshot ;;
+    disk) exec sudo -n "$SELF" disk ;;
     logs)
       valid_name "${2:-}" || { echo "invalid container name" >&2; exit 2; }
       valid_lines "${3:-200}" || { echo "invalid line count" >&2; exit 2; }
@@ -44,11 +46,42 @@ if [ "$mode" = "logs" ]; then
   exit 0
 fi
 
-[ "$mode" = "snapshot" ] || { echo "unsupported request" >&2; exit 2; }
-
 json_escape() {
   printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
+
+kb_of() {
+  # Size of a directory in KB, or null if it doesn't exist.
+  if [ -d "$1" ]; then du -sk "$1" 2>/dev/null | awk '{print $1}'; else echo null; fi
+}
+
+if [ "$mode" = "disk" ]; then
+  root=/var/lib/docker
+  docker_ok=false; driver=""; system_df=""; rotation=false
+  info=$(docker info --format '{{.DockerRootDir}}|{{.LoggingDriver}}' 2>/dev/null) || info=""
+  if [ -n "$info" ]; then
+    docker_ok=true
+    root=${info%%|*}
+    driver=${info#*|}
+    # One JSON object per line: Images, Containers, Local Volumes, Build Cache.
+    system_df=$(docker system df --format '{{json .}}' 2>/dev/null | awk 'NR>1{printf ","} {printf "%s", $0}')
+  fi
+  grep -q '"max-size"' /etc/docker/daemon.json 2>/dev/null && rotation=true
+  # json-file container logs: total, plus the largest files.
+  sizes=$(find "$root/containers" -maxdepth 2 -name '*-json.log' 2>/dev/null | while read -r f; do
+    s=$(stat -c %s "$f" 2>/dev/null) && printf '%s %s\n' "$s" "$(basename "$(dirname "$f")")"
+  done)
+  logs_total=$(printf '%s\n' "$sizes" | awk '$1 ~ /^[0-9]+$/ {t+=$1; n++} END {printf "%.0f,%d", t, n}')
+  logs_top=$(printf '%s\n' "$sizes" | awk '$1 ~ /^[0-9]+$/' | sort -rn | head -15 |
+    awk 'NR>1{printf ","} {printf "{\"bytes\":%s,\"id\":\"%s\"}", $1, substr($2, 1, 12)}')
+  fs=$( (df -Pk "$root" 2>/dev/null || df -Pk / 2>/dev/null) | awk 'NR==2 {printf "{\"mount\":\"%s\",\"total_kb\":%.0f,\"used_kb\":%.0f,\"avail_kb\":%.0f}", $6, $2, $3, $4}')
+  printf '{"v":2,"ts":%s,"docker":%s,"docker_root":"%s","log_driver":"%s","log_rotation":%s,"fs":%s,"system_df":[%s],"container_logs":{"total_bytes":%s,"count":%s,"top":[%s]},"var_log_kb":%s,"journal_kb":%s,"coolify_backups_kb":%s}\n' \
+    "$(date +%s)" "$docker_ok" "$(json_escape "$root")" "$(json_escape "$driver")" "$rotation" "${fs:-null}" "$system_df" \
+    "${logs_total%,*}" "${logs_total#*,}" "$logs_top" "$(kb_of /var/log)" "$(kb_of /var/log/journal)" "$(kb_of /data/coolify/backups)"
+  exit 0
+fi
+
+[ "$mode" = "snapshot" ] || { echo "unsupported request" >&2; exit 2; }
 
 now=$(date +%s)
 host=$(json_escape "$(cat /proc/sys/kernel/hostname 2>/dev/null || hostname)")
@@ -113,5 +146,5 @@ if command -v docker >/dev/null 2>&1; then
   fi
 fi
 
-printf '{"v":1,"ts":%s,"hostname":"%s","uptime_s":%s,"ncpu":%s,"cpu":%s,"load":[%s],"mem":%s,"disks":[%s],"docker":%s,"containers":[%s]}\n' \
+printf '{"v":2,"ts":%s,"hostname":"%s","uptime_s":%s,"ncpu":%s,"cpu":%s,"load":[%s],"mem":%s,"disks":[%s],"docker":%s,"containers":[%s]}\n' \
   "$now" "$host" "$uptime_s" "$ncpu" "$cpu" "$load" "$mem" "$disks" "$docker_ok" "$containers"

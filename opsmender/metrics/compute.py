@@ -20,7 +20,8 @@ def root_disk(disks: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def compute(prev: dict[str, Any] | None, cur: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"ts": cur.get("ts"), "hostname": cur.get("hostname"), "ncpu": cur.get("ncpu"),
-                           "uptime_s": cur.get("uptime_s"), "docker": cur.get("docker", False)}
+                           "uptime_s": cur.get("uptime_s"), "docker": cur.get("docker", False),
+                           "probe_v": cur.get("v", 1)}
 
     cpu_pct = None
     if prev and prev.get("cpu") and cur.get("cpu"):

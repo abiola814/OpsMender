@@ -31,10 +31,14 @@ jobs:
       # Run as root: unprivileged, the probe re-executes itself through sudo from its install path.
       - name: Probe prints valid JSON with dash
         run: sudo dash opsmender/metrics/probe.sh snapshot | python3 -m json.tool > /dev/null
+      - name: Disk report is valid JSON with dash
+        run: sudo dash opsmender/metrics/probe.sh disk | python3 -m json.tool > /dev/null
       - name: Probe prints valid JSON with busybox sh
         run: |
-          docker run --rm -v "$PWD/opsmender/metrics/probe.sh:/p:ro" alpine:3.20 sh /p snapshot \
-            | python3 -m json.tool > /dev/null
+          for req in snapshot disk; do
+            docker run --rm -v "$PWD/opsmender/metrics/probe.sh:/p:ro" alpine:3.20 sh /p $req \
+              | python3 -m json.tool > /dev/null
+          done
       - name: Probe rejects unsafe requests
         run: |
           for req in "logs ../etc;id 10" "logs web 99999" "shell" "cat /etc/shadow"; do

@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS servers (
     last_probe_error TEXT,
     probe_failures INTEGER NOT NULL DEFAULT 0,
     last_snapshot TEXT,      -- raw probe JSON, kept to compute rates on the next poll
-    current_metrics TEXT     -- computed figures from the latest poll
+    current_metrics TEXT,    -- computed figures from the latest poll
+    disk_raw TEXT,           -- latest raw disk-usage report from the probe
+    disk_at REAL
 );
 
 CREATE TABLE IF NOT EXISTS resources (
@@ -160,6 +162,13 @@ CREATE TABLE IF NOT EXISTS audit (
 """
 
 
+# (table, column, declaration) added after v0.1.0, applied to existing databases on start.
+MIGRATIONS = [
+    ("servers", "disk_raw", "TEXT"),
+    ("servers", "disk_at", "REAL"),
+]
+
+
 class Database:
     def __init__(self, path: Path | str):
         self.path = str(path)
@@ -171,6 +180,14 @@ class Database:
             self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was created. CREATE TABLE IF NOT EXISTS won't."""
+        for table, column, decl in MIGRATIONS:
+            existing = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         with self._lock:
