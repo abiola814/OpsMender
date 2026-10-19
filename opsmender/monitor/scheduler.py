@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from ..adapters.coolify import CoolifyError
+from ..metrics.autosetup import setup_pending
 from ..metrics.store import rollup_and_prune
 from ..runtime import Runtime
 from .metrics import check_disk_forecasts, poll_all
@@ -16,12 +17,16 @@ log = logging.getLogger("opsmender.scheduler")
 
 async def _sync_loop(rt: Runtime) -> None:
     backfilled = False
+    setup_task: asyncio.Task[None] | None = None
     while True:
         try:
             await sync(rt)
             if not backfilled and rt.status.get("last_sync_error") is None and rt.coolify() is not None:
                 await backfill_deployments(rt)
                 backfilled = True
+            # Installing probes can take a while per server, so it runs beside the sync loop, never twice.
+            if rt.status.get("last_sync_error") is None and (setup_task is None or setup_task.done()):
+                setup_task = asyncio.create_task(setup_pending(rt))
         except CoolifyError as exc:
             log.warning("sync failed: %s", exc)
         except Exception:  # noqa: BLE001 - keep the loop alive

@@ -17,7 +17,7 @@
 </div>
 
 {% if server.metrics_enabled and m and (m.probe_v or 1) < probe_current %}
-<div class="flash warning">This server runs an older version of the OpsMender probe. To enable disk analysis, download the setup script below and run it again (it updates in place).</div>
+<div class="flash warning">This server runs an older version of the OpsMender probe. Click "Re-install / update automatically" below{% if auto_metrics %} (or wait: automatic setup updates it after the next sync){% endif %}, or re-run the setup script manually.</div>
 {% endif %}
 
 {% if server.metrics_enabled and m %}
@@ -111,11 +111,23 @@
     {% endif %}
   </div>
   {% if not server.metrics_enabled %}
-    <p class="dim">See CPU, memory, disk and per-container usage. OpsMender connects over SSH once a minute, runs a small read-only script that prints a snapshot, and disconnects. No agent keeps running and nothing is installed besides that script.</p>
-    <form method="post" action="/servers/{{ server.uuid }}/metrics/enable">{{ csrf_field() }}<button class="btn primary" type="submit">Enable metrics</button></form>
+    <p class="dim">See CPU, memory, disk and per-container usage. OpsMender connects over SSH once a minute, runs a small read-only script that prints a snapshot, and disconnects. No agent keeps running.</p>
+    {% if server.auto_setup_error and 'turned off by a user' not in server.auto_setup_error %}<div class="flash error">Automatic setup: {{ server.auto_setup_error }}</div>{% endif %}
+    <div class="btn-row">
+      <form method="post" action="/servers/{{ server.uuid }}/metrics/auto" class="inline" data-busy="Installing… (up to a minute)">{{ csrf_field() }}<button class="btn primary" type="submit">Set up automatically</button></form>
+      <form method="post" action="/servers/{{ server.uuid }}/metrics/enable" class="inline">{{ csrf_field() }}<button class="btn" type="submit">Set up manually</button></form>
+    </div>
+    <p class="small faint" style="margin-top:8px">Automatic setup uses the SSH key Coolify already has for this server, once, to install the read-only probe. Coolify's key is never stored. It needs a Coolify token with read:sensitive.</p>
   {% else %}
     {% if server.last_probe_error %}<div class="flash error">Last attempt: {{ server.last_probe_error }}</div>{% endif %}
-    <ol class="steps">
+    {% if server.auto_setup_at and not server.auto_setup_error %}
+    <p class="small dim">Installed automatically {{ server.auto_setup_at|ago }} with Coolify's SSH key.</p>
+    {% endif %}
+    <div class="btn-row" style="margin-bottom:12px">
+      <form method="post" action="/servers/{{ server.uuid }}/metrics/auto" class="inline" data-busy="Installing…">{{ csrf_field() }}<button class="btn small" type="submit">Re-install / update automatically</button></form>
+    </div>
+    <details{{ ' open' if server.last_probe_error and not server.auto_setup_at }}><summary>Manual setup</summary>
+    <ol class="steps" style="margin-top:12px">
       <li><strong>Run this once on the server as root</strong> (from Coolify's terminal for this server, or over SSH).
         <div class="dim small" style="margin:4px 0 8px">It creates a restricted <code>opsmender</code> user that can only run the read-only probe. Read it before running it.</div>
         <div class="btn-row" style="margin-bottom:8px">
@@ -145,6 +157,7 @@
         </div>
       </li>
     </ol>
+    </details>
   {% endif %}
 </div>
 {% endblock %}

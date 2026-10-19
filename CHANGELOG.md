@@ -16,6 +16,15 @@ All notable changes to this project are documented here. The format follows
   findings such as "Build cache: 21 GB can be freed" and "Docker log rotation is off", and pass it to
   the AI diagnosis.
 - Probe v2 with a `disk` request. Servers running probe v1 show a notice to re-run the setup script.
+- One token, everything from Coolify:
+  - Automatic server metrics: the probe is installed with the SSH key Coolify already has for each
+    server (used once, never stored), for new servers and to update outdated probes. Per-server
+    "Set up automatically" button; manual setup is still available.
+  - Alerts are sent through the team's Coolify notification channels (email via SMTP or Resend,
+    Discord, Slack, Telegram, Pushover, webhook), skipping alerts Coolify already sends itself.
+    Alerts include the likely cause and a link to the incident.
+  - Logs for databases and services, not only applications.
+  - Settings shows what the token gives OpsMender and what's missing (for example read:sensitive).
 
 ### Changed
 

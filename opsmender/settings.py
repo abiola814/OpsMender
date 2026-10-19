@@ -30,6 +30,9 @@ DEFAULTS: dict[str, Any] = {
     "ai_auto_diagnose": False,
     # Actions
     "actions_enabled": False,
+    # Use what's already configured in Coolify
+    "auto_metrics": True,        # install the probe with Coolify's SSH keys (needs read:sensitive)
+    "notify_via_coolify": True,  # send alerts through the team's Coolify notification channels
     # Notifications
     "notify_on_resolve": True,
 }

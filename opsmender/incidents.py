@@ -15,7 +15,7 @@ from .diagnosis.logs import bound
 from .diagnosis.redact import redact
 from .diagnosis.rules import analyze
 from .metrics import disk, ssh
-from .notify import send
+from .notify import Alert, dispatch
 from .runtime import Runtime
 
 log = logging.getLogger("opsmender.incidents")
@@ -55,9 +55,10 @@ def open_incident(rt: Runtime, *, fingerprint: str, kind: str, severity: str, ti
     incident_id = int(cur.lastrowid)
     level = "error" if severity == "critical" else "warning"
     rt.db.add_event("incident_opened", title, level, (resource or {}).get("uuid"), incident_id)
-    spawn(send(rt.settings.get("notify_webhook_url"), f"🔴 OpsMender: {title}" + (f"\n{summary}" if summary else "")))
     if enrich_now:
-        spawn(enrich(rt, incident_id))
+        spawn(enrich(rt, incident_id, notify=True))  # notifies once the evidence and findings are in
+    else:
+        spawn(notify_incident(rt, incident_id))
     return incident_id, True
 
 
@@ -69,7 +70,8 @@ def resolve_incident(rt: Runtime, fingerprint: str, note: str | None = None) -> 
     message = f"Resolved: {row['title']}" + (f" ({note})" if note else "")
     rt.db.add_event("incident_resolved", message, "info", row["resource_uuid"], row["id"])
     if rt.settings.bool("notify_on_resolve"):
-        spawn(send(rt.settings.get("notify_webhook_url"), f"✅ OpsMender: {message}"))
+        spawn(dispatch(rt, Alert(title=message, severity="resolved", kind=f"{row['kind']}_resolved",
+                                 url=incident_url(rt, row["id"]))))
     return True
 
 
@@ -127,7 +129,25 @@ async def fetch_logs(rt: Runtime, resource: dict[str, Any]) -> tuple[str, str]:
     return redact(bound(text, lines, max_bytes)), source
 
 
-async def enrich(rt: Runtime, incident_id: int) -> None:
+def incident_url(rt: Runtime, incident_id: int) -> str | None:
+    base = rt.public_url()
+    return f"{base}/incidents/{incident_id}" if base else None
+
+
+async def notify_incident(rt: Runtime, incident_id: int) -> None:
+    inc = rt.db.one("SELECT * FROM incidents WHERE id = ?", (incident_id,))
+    if not inc:
+        return
+    body = inc["summary"] or ""
+    findings = loads(inc["findings"], {}) or {}
+    top = (findings.get("findings") or [None])[0]
+    if top and top["title"] not in body:
+        body = (body + "\n" if body else "") + f"Likely cause: {top['title']}"
+    await dispatch(rt, Alert(title=inc["title"], body=body, severity=inc["severity"], kind=inc["kind"],
+                             url=incident_url(rt, incident_id)))
+
+
+async def enrich(rt: Runtime, incident_id: int, notify: bool = False) -> None:
     inc = rt.db.one("SELECT * FROM incidents WHERE id = ?", (incident_id,))
     if not inc:
         return
@@ -183,6 +203,8 @@ async def enrich(rt: Runtime, incident_id: int) -> None:
             summary = f"Couldn't analyze disk usage: {evidence['disk_error']}"
     rt.db.execute("UPDATE incidents SET evidence = ?, findings = ?, summary = ? WHERE id = ?",
                   (dumps(evidence), dumps(findings), summary, incident_id))
+    if notify:
+        await notify_incident(rt, incident_id)
 
     if rt.settings.bool("ai_auto_diagnose") and ai_config(rt):
         try:

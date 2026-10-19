@@ -17,10 +17,18 @@
         <div class="help">The address you open Coolify at. If OpsMender runs on the same server and is attached to the <code>coolify</code> network, <code>http://coolify:8080</code> also works.</div></div>
       <div class="field"><label for="coolify_token">API token</label>
         <input id="coolify_token" name="coolify_token" type="password" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_token else 'Paste a token from Coolify → Keys & Tokens → API tokens' }}" {{ '' if has_token else 'required' }}>
-        <div class="help">Read access is enough for monitoring. Logs may need the <em>read:sensitive</em> permission. Restart and redeploy need write/deploy.</div></div>
+        <div class="help">Give it <strong>read</strong> and <strong>read:sensitive</strong> so OpsMender can use what you already set up in Coolify: logs, SSH keys for automatic metrics, and your notification channels. Add write/deploy only if you want restart and redeploy buttons.</div></div>
       <div class="field"><label class="check"><input type="checkbox" name="coolify_verify_tls" {{ 'checked' if s.coolify_verify_tls }}> Verify TLS certificate</label></div>
+      <div class="field"><label class="check"><input type="checkbox" name="auto_metrics" {{ 'checked' if s.auto_metrics }}> Set up server metrics automatically</label>
+        <div class="help">Uses the SSH key Coolify already has for each server, once, to install OpsMender's read-only probe. Coolify's key is never stored.</div></div>
       <button class="btn primary" type="submit">Save &amp; test connection</button>
     </form>
+    {% if access %}
+    <h3>What this token gives OpsMender</h3>
+    <ul class="list">{% for a in access %}
+      <li><span>{{ a.label }}<div class="small faint">{{ a.detail }}</div></span><span class="badge {{ 'b-ok' if a.ok else 'b-warning' }}">{{ 'yes' if a.ok else 'no' }}</span></li>
+    {% endfor %}</ul>
+    {% endif %}
   </div>
 
   <div class="card" id="ai">
@@ -87,11 +95,20 @@
     <h2>Notifications</h2>
     <form method="post" action="/settings/notifications">
       {{ csrf_field() }}
-      <div class="field"><label for="notify_webhook_url">Webhook URL</label>
+      <div class="field"><label class="check"><input type="checkbox" name="notify_via_coolify" {{ 'checked' if s.notify_via_coolify }}> Send alerts through my Coolify notification channels</label>
+        <div class="help">No extra setup: OpsMender uses the channels you enabled in Coolify → Notifications. Alerts Coolify already sends (failed deployments, status changes, unreachable servers, disk usage) aren't sent twice.</div></div>
+      {% if channels %}
+      <ul class="list" style="margin-bottom:14px">{% for c in channels %}
+        <li><span>{{ c.label }}{% if c.problem %}<div class="small faint">{{ c.problem }}</div>{% endif %}</span><span class="badge {{ 'b-ok' if c.ready else 'b-warning' }}">{{ 'ready' if c.ready else 'can\'t use' }}</span></li>
+      {% endfor %}</ul>
+      {% elif has_token %}
+      <p class="small dim">No notification channels found in Coolify. Enable one in Coolify → Notifications, or add a webhook below.</p>
+      {% endif %}
+      <div class="field"><label for="notify_webhook_url">Extra webhook URL <span class="faint">(optional)</span></label>
         <input id="notify_webhook_url" name="notify_webhook_url" type="url" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_notify else 'Slack or Discord incoming webhook URL' }}">
         {% if has_notify %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_webhook"> Remove saved webhook</label>{% endif %}</div>
       <div class="field"><label class="check"><input type="checkbox" name="notify_on_resolve" {{ 'checked' if s.notify_on_resolve }}> Also notify when incidents resolve</label></div>
-      <div class="btn-row"><button class="btn" type="submit">Save</button><button class="btn" type="submit" name="test" value="1">Save &amp; send test</button></div>
+      <div class="btn-row"><button class="btn" type="submit">Save</button><button class="btn" type="submit" name="test" value="1">Save &amp; send test to all</button></div>
     </form>
   </div>
 

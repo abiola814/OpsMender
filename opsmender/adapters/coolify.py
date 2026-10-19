@@ -6,7 +6,9 @@ a key exists. Endpoints used:
     GET  /api/v1/version
     GET  /api/v1/servers, /servers/{uuid}/resources
     GET  /api/v1/applications, /services, /databases
-    GET  /api/v1/applications/{uuid}/logs?lines=N
+    GET  /api/v1/{applications|databases}/{uuid}/logs?lines=N, /services/{uuid}/logs?sub_service_name=...
+    GET  /api/v1/security/keys                    (private keys need the read:sensitive ability)
+    GET  /api/v1/notifications/{channel}          (secrets need read:sensitive and a team admin)
     GET  /api/v1/deployments                       (currently running)
     GET  /api/v1/deployments/{uuid}
     GET  /api/v1/deployments/applications/{uuid}
@@ -90,6 +92,7 @@ class CoolifyClient:
                 user=item.get("user"),
                 reachable=_bool(settings.get("is_reachable", item.get("is_reachable"))),
                 usable=_bool(settings.get("is_usable", item.get("is_usable"))),
+                private_key_id=_int(item.get("private_key_id")),
                 raw=item,
             ))
         return servers
@@ -149,14 +152,47 @@ class CoolifyClient:
     # Logs
 
     async def resource_logs(self, resource: Resource, lines: int) -> str | None:
-        """Recent container logs. Coolify exposes this for applications only."""
-        if resource.kind != "application":
+        """Recent container logs for an application, database, or every part of a service."""
+        if resource.kind in ("application", "database"):
+            return _logs_text(await self._get(f"/{KIND_PATHS[resource.kind]}/{resource.uuid}/logs", lines=lines))
+        if resource.kind == "service":
+            detail = await self._get(f"/services/{resource.uuid}")
+            names = [part.get("name") for key in ("applications", "databases")
+                     for part in (detail or {}).get(key, []) if isinstance(part, dict) and part.get("name")]
+            chunks = []
+            for name in names[:4]:
+                try:
+                    text = _logs_text(await self._get(f"/services/{resource.uuid}/logs", sub_service_name=name,
+                                                      lines=max(20, lines // max(1, len(names)))))
+                except CoolifyError:
+                    continue
+                if text.strip():
+                    chunks.append(f"===== {name} =====\n{text}")
+            return "\n".join(chunks)
+        return None
+
+    # Credentials and settings already configured in Coolify
+
+    async def private_keys(self) -> list[dict[str, Any]]:
+        """SSH keys. ``private_key`` is only included for tokens with the read:sensitive ability."""
+        return _as_list(await self._get("/security/keys"))
+
+    async def notification_settings(self, channel: str) -> dict[str, Any] | None:
+        """A team notification channel's settings, or None if this Coolify version lacks the endpoint."""
+        try:
+            data = await self._get(f"/notifications/{channel}")
+        except CoolifyError as exc:
+            if exc.status in (404, 405):
+                return None
+            raise
+        return data if isinstance(data, dict) else None
+
+    async def instance_email_settings(self) -> dict[str, Any] | None:
+        try:
+            data = await self._get("/settings/email")
+        except CoolifyError:
             return None
-        data = await self._get(f"/applications/{resource.uuid}/logs", lines=lines)
-        if isinstance(data, dict):
-            logs = data.get("logs", "")
-            return "\n".join(logs) if isinstance(logs, list) else str(logs)
-        return str(data) if data else ""
+        return data if isinstance(data, dict) else None
 
     # Actions
 
@@ -174,6 +210,13 @@ class CoolifyClient:
                 raise
             data = await self._request("GET", path)
         return _message(data) or f"{action.capitalize()} requested."
+
+
+def _logs_text(data: Any) -> str:
+    if isinstance(data, dict):
+        logs = data.get("logs", "")
+        return "\n".join(map(str, logs)) if isinstance(logs, list) else str(logs or "")
+    return str(data) if data else ""
 
 
 def _deployment_uuid(d: dict[str, Any]) -> str | None:

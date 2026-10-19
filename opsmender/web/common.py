@@ -74,6 +74,8 @@ def redirect(url: str) -> RedirectResponse:
 
 def render(request: Request, template: str, **context: Any):
     rt = rt_of(request)
+    if not rt.config.base_url:
+        rt.status["public_url"] = str(request.base_url).rstrip("/")  # remembered for notification links
     flashes = request.session.pop("flash", [])
     open_counts = {r["severity"]: r["n"] for r in rt.db.all(
         "SELECT severity, COUNT(*) AS n FROM incidents WHERE status = 'open' GROUP BY severity")}

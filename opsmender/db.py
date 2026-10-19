@@ -46,7 +46,10 @@ CREATE TABLE IF NOT EXISTS servers (
     last_snapshot TEXT,      -- raw probe JSON, kept to compute rates on the next poll
     current_metrics TEXT,    -- computed figures from the latest poll
     disk_raw TEXT,           -- latest raw disk-usage report from the probe
-    disk_at REAL
+    disk_at REAL,
+    private_key_id INTEGER,  -- Coolify's SSH key for this server (used once for automatic setup)
+    auto_setup_at REAL,
+    auto_setup_error TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resources (
@@ -166,6 +169,9 @@ CREATE TABLE IF NOT EXISTS audit (
 MIGRATIONS = [
     ("servers", "disk_raw", "TEXT"),
     ("servers", "disk_at", "REAL"),
+    ("servers", "private_key_id", "INTEGER"),
+    ("servers", "auto_setup_at", "REAL"),
+    ("servers", "auto_setup_error", "TEXT"),
 ]
 
 

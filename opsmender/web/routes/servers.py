@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse
 
 from ...db import loads
 from ...metrics import disk, ssh
+from ...metrics.autosetup import DISABLED_BY_USER, SetupError, ensure_keypair, probe_host_for, setup_server
 from ...metrics.installer import install_script
 from ...metrics.store import disk_forecast, disk_series, history
 from ...monitor.metrics import poll_server
@@ -14,7 +15,6 @@ from ..common import current_user, flash, form_with_csrf, redirect, render, rt_o
 from .dashboard import server_cards
 
 router = APIRouter()
-LOCAL_HOSTS = {"host.docker.internal", "localhost", "127.0.0.1", "::1"}
 RANGES = {"1h": 1, "24h": 24, "7d": 168, "30d": 720}
 
 
@@ -23,14 +23,6 @@ def _server(rt, uuid: str) -> dict:
     if not server:
         raise HTTPException(404, "Server not found")
     return server
-
-
-def ensure_keypair(rt) -> str:
-    private = rt.settings.get("ssh_private_key")
-    if not private:
-        private, _ = ssh.generate_keypair()
-        rt.settings.set("ssh_private_key", private)
-    return ssh.public_key_of(private)
 
 
 @router.get("/servers")
@@ -55,7 +47,7 @@ async def server_detail(request: Request, uuid: str, user: str = Depends(current
         request, "server.html", server=server, m=current, range_key=range_key, ranges=list(RANGES),
         series=history(rt.db, uuid, hours=hours) if server["metrics_enabled"] else [],
         forecast=disk_forecast(disk_series(rt.db, uuid)) if server["metrics_enabled"] else None,
-        public_key=public_key,
+        public_key=public_key, auto_metrics=rt.settings.bool("auto_metrics"),
         disk_report=disk.report_for(rt, server), risk_text=disk.RISK_TEXT, probe_current=disk.PROBE_VERSION,
         hosted=rt.db.all("SELECT * FROM resources WHERE server_uuid = ? AND missing = 0 ORDER BY name", (uuid,)),
         incidents=rt.db.all("SELECT * FROM incidents WHERE server_uuid = ? ORDER BY status = 'open' DESC,"
@@ -70,12 +62,27 @@ async def enable_metrics(request: Request, uuid: str, user: str = Depends(curren
     rt = rt_of(request)
     server = _server(rt, uuid)
     ensure_keypair(rt)
-    host = server["probe_host"] or ("host.docker.internal" if (server["ip"] or "") in LOCAL_HOSTS else server["ip"])
-    rt.db.execute("UPDATE servers SET metrics_enabled = 1, probe_host = ?, probe_port = COALESCE(probe_port, ?)"
-                  " WHERE uuid = ?", (host, server["port"] or 22, uuid))
+    rt.db.execute("UPDATE servers SET metrics_enabled = 1, probe_host = ?, probe_port = COALESCE(probe_port, ?),"
+                  " auto_setup_error = NULL WHERE uuid = ?", (probe_host_for(server), server["port"] or 22, uuid))
     rt.db.audit(user, "enable_metrics", "ok", "server", uuid, server["name"])
     flash(request, "Metrics enabled. Run the setup script below on the server, then click 'Test connection'.", "success")
     return redirect(f"/servers/{uuid}#setup")
+
+
+@router.post("/servers/{uuid}/metrics/auto")
+async def auto_setup(request: Request, uuid: str, user: str = Depends(current_user)):
+    await form_with_csrf(request)
+    rt = rt_of(request)
+    server = _server(rt, uuid)
+    try:
+        message = await setup_server(rt, server, actor=user)
+    except SetupError as exc:
+        flash(request, f"Automatic setup failed: {exc}", "error")
+        return redirect(f"/servers/{uuid}#setup")
+    result = await poll_server(rt, _server(rt, uuid), rt.settings.get("ssh_private_key"))
+    flash(request, message + (f" {len(result.get('containers', []))} containers found." if result else
+                              " The first metrics poll failed; see the error below."), "success" if result else "error")
+    return redirect(f"/servers/{uuid}")
 
 
 @router.post("/servers/{uuid}/metrics/disable")
@@ -83,8 +90,8 @@ async def disable_metrics(request: Request, uuid: str, user: str = Depends(curre
     await form_with_csrf(request)
     rt = rt_of(request)
     server = _server(rt, uuid)
-    rt.db.execute("UPDATE servers SET metrics_enabled = 0, last_snapshot = NULL, current_metrics = NULL WHERE uuid = ?",
-                  (uuid,))
+    rt.db.execute("UPDATE servers SET metrics_enabled = 0, last_snapshot = NULL, current_metrics = NULL,"
+                  " auto_setup_error = ? WHERE uuid = ?", (DISABLED_BY_USER, uuid))
     rt.db.audit(user, "disable_metrics", "ok", "server", uuid, server["name"])
     flash(request, "Metrics disabled. To remove the probe from the server: "
                    "userdel -r opsmender; rm -rf /usr/local/lib/opsmender /etc/sudoers.d/opsmender", "info")

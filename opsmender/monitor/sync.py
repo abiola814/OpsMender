@@ -50,12 +50,13 @@ async def _sync_servers(rt: Runtime, client: CoolifyClient) -> None:
     server_map: dict[str, str] = {}
     for s in servers:
         rt.db.execute(
-            """INSERT INTO servers (uuid, name, ip, port, ssh_user, reachable, usable, raw, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?)
+            """INSERT INTO servers (uuid, name, ip, port, ssh_user, reachable, usable, private_key_id, raw, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(uuid) DO UPDATE SET name=excluded.name, ip=excluded.ip, port=excluded.port,
                  ssh_user=excluded.ssh_user, reachable=excluded.reachable, usable=excluded.usable,
-                 raw=excluded.raw, updated_at=excluded.updated_at""",
-            (s.uuid, s.name, s.ip, s.port, s.user, _b(s.reachable), _b(s.usable), dumps(_slim_server(s.raw)), now),
+                 private_key_id=excluded.private_key_id, raw=excluded.raw, updated_at=excluded.updated_at""",
+            (s.uuid, s.name, s.ip, s.port, s.user, _b(s.reachable), _b(s.usable), s.private_key_id,
+             dumps(_slim_server(s.raw)), now),
         )
         if s.reachable is False:
             open_incident(rt, fingerprint=f"server-unreachable:{s.uuid}", kind="server_unreachable",

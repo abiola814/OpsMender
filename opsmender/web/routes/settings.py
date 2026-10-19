@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 
 from ...adapters.coolify import CoolifyClient, CoolifyError
 from ...ai.providers import PRESETS, AIConfig, AIError, complete
-from ...notify import send
+from ...notify import Alert, coolify_channels, dispatch
 from ...security import hash_password, verify_password
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
 
@@ -20,6 +20,30 @@ NUMERIC = {
     "disk_threshold": (10, 100), "sustain_samples": (1, 60), "restart_threshold": (1, 50),
     "disk_forecast_days": (1, 90),
 }
+
+
+async def check_access(client: CoolifyClient) -> list[dict]:
+    """What this Coolify token can reach, so the UI can say what works automatically."""
+    access = []
+
+    async def probe(key: str, label: str, coro, judge):
+        try:
+            ok, detail = judge(await coro)
+        except CoolifyError as exc:
+            ok, detail = False, ("needs more permissions" if exc.status in (401, 403)
+                                 else "not available in this Coolify version" if exc.status in (404, 405)
+                                 else str(exc)[:120])
+        access.append({"key": key, "label": label, "ok": ok, "detail": detail})
+
+    await probe("inventory", "Servers, apps, services, databases", client.list_servers(),
+                lambda servers: (True, f"{len(servers)} server(s)"))
+    await probe("ssh_keys", "Automatic server metrics (uses Coolify's SSH keys)", client.private_keys(),
+                lambda keys: (any(str(k.get("private_key") or "").startswith("-----BEGIN") for k in keys),
+                              "ready" if any(str(k.get("private_key") or "").startswith("-----BEGIN") for k in keys)
+                              else "give the token the read:sensitive permission"))
+    await probe("notifications", "Your Coolify notification channels", client.notification_settings("discord"),
+                lambda data: (data is not None, "ready" if data is not None else "not available in this Coolify version"))
+    return access
 
 
 def webhook_token(rt) -> str:
@@ -38,7 +62,10 @@ async def settings_page(request: Request, user: str = Depends(current_user)):
     return render(
         request, "settings.html",
         s={k: s.get(k) for k in ("coolify_url", "coolify_verify_tls", "ai_provider", "ai_base_url", "ai_model",
-                                 "ai_auto_diagnose", "actions_enabled", "notify_on_resolve", *NUMERIC)},
+                                 "ai_auto_diagnose", "actions_enabled", "notify_on_resolve", "auto_metrics",
+                                 "notify_via_coolify", *NUMERIC)},
+        access=s.get("coolify_access") or [],
+        channels=await coolify_channels(rt) if s.get("coolify_token") else [],
         has_token=bool(s.get("coolify_token")), has_ai_key=bool(s.get("ai_api_key")),
         has_notify=bool(s.get("notify_webhook_url")),
         presets=list(PRESETS.values()),
@@ -62,6 +89,7 @@ async def save_coolify(request: Request, user: str = Depends(current_user)):
     try:
         version = await client.version()
         servers = await client.list_servers()
+        access = await check_access(client)
     except CoolifyError as exc:
         flash(request, f"Couldn't connect: {exc}", "error")
         return redirect("/settings#coolify")
@@ -70,6 +98,9 @@ async def save_coolify(request: Request, user: str = Depends(current_user)):
     rt.settings.set("coolify_url", url)
     rt.settings.set("coolify_token", token)
     rt.settings.set("coolify_verify_tls", verify)
+    rt.settings.set("coolify_access", access)
+    rt.settings.set("auto_metrics", form.get("auto_metrics") == "on")
+    rt.status.pop("coolify_channels", None)
     rt.status["coolify_version"] = version.strip('"')
     rt.db.audit(user, "save_coolify", "ok", detail=url)
     rt.wake.set()
@@ -136,10 +167,15 @@ async def save_notifications(request: Request, user: str = Depends(current_user)
     if form.get("clear_webhook") == "on":
         rt.settings.delete("notify_webhook_url")
     rt.settings.set("notify_on_resolve", form.get("notify_on_resolve") == "on")
+    rt.settings.set("notify_via_coolify", form.get("notify_via_coolify") == "on")
     if form.get("test") == "1":
-        ok = await send(rt.settings.get("notify_webhook_url"), "👋 Test notification from OpsMender.")
-        flash(request, "Test notification sent." if ok else "Test notification failed. Check the URL.",
-              "success" if ok else "error")
+        results = await dispatch(rt, Alert(title="Test notification", body="If you can read this, OpsMender alerts "
+                                           "reach you here.", severity="info", kind="test", url=rt.public_url()),
+                                 force=True)
+        if not results:
+            flash(request, "No destinations: enable a channel in Coolify (Notifications) or add a webhook here.", "error")
+        for dest, ok, detail in results:
+            flash(request, f"{dest}: {detail}", "success" if ok else ("info" if ok is None else "error"))
     else:
         flash(request, "Notification settings saved.", "success")
     return redirect("/settings#notifications")

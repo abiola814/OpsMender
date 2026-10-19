@@ -37,13 +37,22 @@ OpsMender does not need Prometheus, Grafana, Loki or Redis, and doesn't run an a
    the admin account. To skip this step, set `OPSMENDER_ADMIN_USER` and
    `OPSMENDER_ADMIN_PASSWORD` instead.
 3. In **Settings → Coolify connection**, paste your Coolify URL and an API token
-   (Coolify → Keys & Tokens → API tokens).
-   - Read access is enough for monitoring. Fetching logs may need `read:sensitive`.
-   - Restart and redeploy need write/deploy.
-4. Optional: open a server and click **Enable metrics** (see below).
-5. Optional: add an AI provider in **Settings → AI provider**.
-6. Optional: paste the webhook URL from **Settings → Instant updates** into Coolify's webhook
-   notification settings, so failures appear immediately instead of within one poll interval.
+   (Coolify → Keys & Tokens → API tokens) with **read** and **read:sensitive**.
+   Add write/deploy only if you want restart and redeploy buttons.
+
+That's it. With that one token, OpsMender uses what you've already set up in Coolify:
+
+- **Server metrics set themselves up.** OpsMender uses the SSH key Coolify already has for each
+  server, once, to install its read-only probe. Coolify's key is never stored.
+- **Alerts go to your existing Coolify notification channels** (email, Discord, Slack, Telegram,
+  Pushover, webhook). Alerts Coolify already sends itself aren't duplicated.
+- **Logs** for applications, databases and services come from Coolify.
+
+The Settings page shows what the token gives OpsMender. Optional extras:
+
+- Add an AI provider in **Settings → AI provider**.
+- Paste the webhook URL from **Settings → Instant updates** into Coolify's webhook notification
+  settings, so failures appear immediately instead of within one poll interval.
 
 ### Run anywhere else
 
@@ -55,8 +64,10 @@ Or without Docker: `pip install . && OPSMENDER_DATA_DIR=./data python -m opsmend
 
 ## Server metrics
 
-Click **Enable metrics** on a server and download `opsmender-setup.sh`. Read it, then run it once
-as root on that server. It:
+Metrics are set up automatically when the Coolify token has `read:sensitive` (you can turn this off
+in Settings). Each server page also has a **Set up automatically** button. To set it up by hand
+instead, click **Set up manually** and download `opsmender-setup.sh`. Read it, then run it once as
+root on that server. Either way the same script runs. It:
 
 1. creates a system user `opsmender` that has no password and can't get an interactive shell;
 2. installs a read-only probe at `/usr/local/lib/opsmender/probe`;
@@ -105,6 +116,9 @@ Set these as environment variables. Everything else is configured in the UI.
 - Admin login uses scrypt password hashing and login rate limiting. Sessions are signed
   `SameSite=Strict` cookies, and every form carries a CSRF token.
 - The Coolify token, AI keys, SSH private key and webhook URLs are encrypted at rest.
+- A Coolify token with `read:sensitive` can read your servers' SSH keys and notification secrets.
+  Treat it like root access. OpsMender uses Coolify's SSH keys only for the one-time probe install
+  and never stores them.
 - OpsMender mounts no Docker socket and no host filesystem.
 - Secrets are redacted from log text before it is stored or sent to an AI provider.
 - Security headers include CSP, X-Frame-Options and nosniff.

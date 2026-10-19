@@ -15,6 +15,7 @@ class Server:
     user: str | None = None
     reachable: bool | None = None
     usable: bool | None = None
+    private_key_id: int | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 

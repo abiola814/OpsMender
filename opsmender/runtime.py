@@ -52,6 +52,10 @@ class Runtime:
                 asyncio.ensure_future(old.close())
         return self._coolify
 
+    def public_url(self) -> str | None:
+        """OpsMender's own address, for links in notifications."""
+        return self.config.base_url or self.status.get("public_url")
+
     def self_usage(self) -> dict[str, float]:
         try:
             return {"rss_mb": self._process.memory_info().rss / 1_048_576, "cpu_pct": self._process.cpu_percent(None)}
