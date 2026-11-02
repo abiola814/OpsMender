@@ -9,7 +9,7 @@ from typing import Any, Coroutine
 
 from .adapters.base import Resource
 from .ai.prompts import incident_prompt
-from .ai.providers import AIConfig, AIError, PRESETS, complete
+from .ai.providers import AIConfig, AIError, PRESETS, ToolsUnsupported, complete, investigate
 from .db import dumps, loads
 from .diagnosis.logs import bound
 from .diagnosis.redact import redact
@@ -103,9 +103,9 @@ def container_for(rt: Runtime, resource: dict[str, Any]) -> tuple[dict[str, Any]
     return None, None
 
 
-async def fetch_logs(rt: Runtime, resource: dict[str, Any]) -> tuple[str, str]:
+async def fetch_logs(rt: Runtime, resource: dict[str, Any], lines: int | None = None) -> tuple[str, str]:
     """Recent logs for a resource, bounded and redacted. Returns (text, source)."""
-    lines = rt.settings.int("log_lines")
+    lines = lines or rt.settings.int("log_lines")
     max_bytes = rt.settings.int("log_max_bytes")
     text, source = "", ""
     client = rt.coolify()
@@ -235,10 +235,22 @@ async def diagnose(rt: Runtime, incident_id: int) -> str:
     try:
         prompt = incident_prompt(inc, loads(inc["evidence"], {}) or {}, loads(inc["findings"], {}) or {},
                                  resource_row(rt, inc["resource_uuid"]))
-        answer = await complete(cfg, prompt)
+        steps: list[dict[str, Any]] = []
+        if rt.settings.bool("ai_investigate"):
+            from .investigation import TOOLS, Toolbox  # it builds on this module
+
+            try:
+                result = await investigate(cfg, prompt, TOOLS, Toolbox(rt, inc).run,
+                                           max_calls=rt.settings.int("ai_max_tool_calls"))
+                answer, steps = result.answer, result.steps
+            except ToolsUnsupported as exc:
+                log.info("%s; diagnosing in a single request", exc)
+                answer = await complete(cfg, prompt)
+        else:
+            answer = await complete(cfg, prompt)
     finally:
         rt.ai_inflight.discard(incident_id)
-    rt.db.execute("UPDATE incidents SET ai_diagnosis = ?, ai_model = ?, ai_at = ? WHERE id = ?",
-                  (answer, f"{cfg.preset.label} · {cfg.model}", time.time(), incident_id))
+    rt.db.execute("UPDATE incidents SET ai_diagnosis = ?, ai_model = ?, ai_at = ?, ai_steps = ? WHERE id = ?",
+                  (answer, f"{cfg.preset.label} · {cfg.model}", time.time(), dumps(steps), incident_id))
     rt.db.add_event("ai_diagnosis", f"AI diagnosis ready: {inc['title']}", "info", inc["resource_uuid"], incident_id)
     return answer

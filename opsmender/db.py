@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     ai_diagnosis TEXT,
     ai_model TEXT,
     ai_at REAL,
+    ai_steps TEXT,           -- the tool calls the AI made while investigating
     resolved_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_fp ON incidents(fingerprint, status);
@@ -172,6 +173,7 @@ MIGRATIONS = [
     ("servers", "private_key_id", "INTEGER"),
     ("servers", "auto_setup_at", "REAL"),
     ("servers", "auto_setup_error", "TEXT"),
+    ("incidents", "ai_steps", "TEXT"),
 ]
 
 

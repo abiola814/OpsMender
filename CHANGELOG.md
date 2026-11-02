@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- AI investigations: instead of answering from the initial evidence alone, the AI can call read-only
+  tools to fetch more logs, deployment build logs, configuration, environment variable names (never
+  values), server and container metrics, disk usage, other resources and past incidents. Capped at
+  8 lookups per diagnosis; every lookup and its result is listed under the diagnosis. Works with
+  Claude and OpenAI-compatible providers, and falls back to a single request for models that can't
+  call tools. On by default; turn it off in Settings → AI provider.
 - Read-only disk usage analysis per server: Docker images, build cache, stopped containers, volumes,
   container logs, system journal and Coolify backups, each with how much it would free, its risk
   (safe / low / medium / danger), what removing it means, and the command to do it yourself.
@@ -29,6 +35,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Existing databases are migrated automatically on start.
+- Requires `anthropic` 1.15 or later.
 
 ## [0.1.0] - 2026-10-18
 

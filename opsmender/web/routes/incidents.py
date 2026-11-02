@@ -38,6 +38,7 @@ async def incident_detail(request: Request, incident_id: int, user: str = Depend
     return render(
         request, "incident.html", inc=inc, resource=resource, server=server,
         evidence=loads(inc["evidence"], {}) or {}, findings=loads(inc["findings"], {}) or {},
+        ai_steps=loads(inc["ai_steps"], []) or [],
         ai_ready=bool(cfg), ai_label=f"{cfg.preset.label} · {cfg.model}" if cfg else None,
         ai_running=incident_id in rt.ai_inflight,
         actions_enabled=rt.settings.bool("actions_enabled"),

@@ -200,6 +200,10 @@ pre.logs { max-height: 560px; font-size: 12px; line-height: 1.45; }
 .ai-answer pre { background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; }
 .ai-answer ul, .ai-answer ol { padding-left: 20px; margin: 6px 0 10px; }
 .ai-answer code { background: var(--bg-sunken); padding: 1px 5px; border-radius: 4px; }
+.ai-steps { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ai-steps ol { padding-left: 20px; margin: 8px 0 0; }
+.ai-steps li { margin-bottom: 6px; }
+.ai-steps pre.code { margin-top: 6px; max-height: 260px; font-size: 12px; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
 .kv dt { color: var(--text-dim); }
 .kv dd { margin: 0; word-break: break-word; }

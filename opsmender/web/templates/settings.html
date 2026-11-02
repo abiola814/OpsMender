@@ -50,6 +50,8 @@
       <div class="field"><label for="ai_base_url">Base URL <span class="faint">(optional)</span></label>
         <input id="ai_base_url" name="ai_base_url" type="url" value="{{ s.ai_base_url }}" data-base-url-input>
         <div class="help">Leave blank to use the provider's default. Needed for “Other OpenAI-compatible”.</div></div>
+      <div class="field"><label class="check"><input type="checkbox" name="ai_investigate" {{ 'checked' if s.ai_investigate }}> Let the AI look further</label>
+        <div class="help">The AI can fetch more logs, build logs, metrics, disk usage, configuration and environment variable names (never values), up to 8 lookups per diagnosis. All read-only. Models that can't call tools get a single request instead.</div></div>
       <div class="field"><label class="check"><input type="checkbox" name="ai_auto_diagnose" {{ 'checked' if s.ai_auto_diagnose }}> Diagnose new incidents automatically</label>
         <div class="help">Uses API credits for every new incident.</div></div>
       <div class="btn-row">

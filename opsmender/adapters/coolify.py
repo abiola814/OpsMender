@@ -12,6 +12,7 @@ a key exists. Endpoints used:
     GET  /api/v1/deployments                       (currently running)
     GET  /api/v1/deployments/{uuid}
     GET  /api/v1/deployments/applications/{uuid}
+    GET  /api/v1/{applications|services}/{uuid}/envs  (only the variable names are kept)
     GET|POST /api/v1/{applications|services|databases}/{uuid}/{start|stop|restart}
     GET  /api/v1/deploy?uuid=...
 """
@@ -170,6 +171,13 @@ class CoolifyClient:
                     chunks.append(f"===== {name} =====\n{text}")
             return "\n".join(chunks)
         return None
+
+    async def env_var_names(self, kind: str, uuid: str) -> list[str]:
+        """Names of a resource's environment variables. Values are dropped as soon as they arrive."""
+        if kind not in ("application", "service"):
+            return []
+        data = await self._get(f"/{KIND_PATHS[kind]}/{uuid}/envs")
+        return sorted({str(e["key"]) for e in _as_list(data) if e.get("key") and not e.get("is_preview")})
 
     # Credentials and settings already configured in Coolify
 

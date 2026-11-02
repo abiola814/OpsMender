@@ -62,7 +62,7 @@ async def settings_page(request: Request, user: str = Depends(current_user)):
     return render(
         request, "settings.html",
         s={k: s.get(k) for k in ("coolify_url", "coolify_verify_tls", "ai_provider", "ai_base_url", "ai_model",
-                                 "ai_auto_diagnose", "actions_enabled", "notify_on_resolve", "auto_metrics",
+                                 "ai_auto_diagnose", "ai_investigate", "actions_enabled", "notify_on_resolve", "auto_metrics",
                                  "notify_via_coolify", *NUMERIC)},
         access=s.get("coolify_access") or [],
         channels=await coolify_channels(rt) if s.get("coolify_token") else [],
@@ -120,6 +120,7 @@ async def save_ai(request: Request, user: str = Depends(current_user)):
     rt.settings.set("ai_model", form.get("ai_model", "").strip() or (PRESETS[provider].default_model if provider else ""))
     rt.settings.set("ai_base_url", form.get("ai_base_url", "").strip())
     rt.settings.set("ai_auto_diagnose", form.get("ai_auto_diagnose") == "on")
+    rt.settings.set("ai_investigate", form.get("ai_investigate") == "on")
     if form.get("ai_api_key", "").strip():
         rt.settings.set("ai_api_key", form["ai_api_key"].strip())
     if form.get("clear_key") == "on":

@@ -13,7 +13,9 @@ deployment and incident, with plain-language diagnosis from the AI provider you 
 - **Rule-based diagnosis, free**: about 20 known failure patterns (database refused, out of memory,
   port in use, missing module, missing env var…) explained with concrete fix steps.
 - **AI root-cause analysis, bring your own key**: Claude, Gemini, DeepSeek, OpenAI, OpenRouter,
-  Groq, Mistral, a local Ollama model, or any OpenAI-compatible endpoint.
+  Groq, Mistral, a local Ollama model, or any OpenAI-compatible endpoint. The AI investigates on
+  its own with read-only tools (more logs, build logs, metrics, disk usage, config, environment
+  variable names) and shows each lookup it made.
 - **Safe fixes**: restart, redeploy, stop and start. Off by default, confirmed by typing the
   resource name, and recorded in an audit log.
 - **Alerts**: Slack- or Discord-compatible webhook.
@@ -94,9 +96,25 @@ To remove it: `userdel -r opsmender; rm -rf /usr/local/lib/opsmender /etc/sudoer
 | Ollama | Local and free. Defaults to `http://host.docker.internal:11434/v1`. |
 | Anything else | Any OpenAI-compatible `/chat/completions` endpoint |
 
-OpsMender sends the AI only an incident's evidence: status, recent deployments, metrics, rule
-findings and a redacted log excerpt. It does so only when you click **Diagnose with AI** or
-enable automatic diagnosis.
+OpsMender sends the AI an incident's evidence: status, recent deployments, metrics, rule findings
+and a redacted log excerpt. It does so only when you click **Diagnose with AI** or enable automatic
+diagnosis.
+
+If the evidence isn't enough, the AI can look further with up to 8 read-only lookups per diagnosis:
+
+| Tool | What it returns |
+|---|---|
+| `get_logs` | Recent runtime logs of a resource (redacted) |
+| `get_deployments`, `get_deployment_log` | Recent deployments and a deployment's build log (redacted) |
+| `get_resource` | Build pack, ports, health check, limits, commands, image, domain, status |
+| `get_env_var_names` | Environment variable **names** from Coolify. Values are never read. |
+| `get_server_metrics`, `get_container_stats` | CPU, memory, disk, restarts and OOM kills, now and over recent hours |
+| `get_disk_usage` | What is using a server's disk |
+| `list_resources`, `get_history` | Other resources and their status; past incidents and events |
+
+Each lookup and its result is listed under the diagnosis. None of them can change anything. Turn this
+off in **Settings → AI provider → Let the AI look further**; models that can't call tools (some
+Ollama models, for example) automatically get a single request instead.
 
 ## Configuration
 

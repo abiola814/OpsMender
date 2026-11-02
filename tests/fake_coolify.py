@@ -58,6 +58,9 @@ class FakeCoolify:
             "/databases": lambda: self.databases,
             "/deployments": lambda: self.running,
             "/applications/app1/logs": lambda: {"logs": self.app_logs},
+            "/applications/app1/envs": lambda: [{"key": "DATABASE_URL", "value": "postgres://u:hunter2@db/app"},
+                                                {"key": "PORT", "value": "3000"},
+                                                {"key": "PREVIEW_ONLY", "value": "x", "is_preview": True}],
             "/deployments/applications/app1": lambda: {"count": len(self.deployments),
                                                         "deployments": list(self.deployments.values())},
         }

@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 MAX_PROMPT_CHARS = 24_000
+# Coolify resource settings worth showing the AI. None of them hold secrets.
+CONFIG_KEYS = ("build_pack", "ports_exposes", "ports_mappings", "health_check_enabled", "health_check_path",
+               "limits_memory", "limits_cpus", "base_directory", "dockerfile_location", "start_command",
+               "install_command", "build_command", "image", "type")
 
 
 def _ts(value: Any) -> str:
@@ -36,9 +40,7 @@ def incident_prompt(incident: dict[str, Any], evidence: dict[str, Any], findings
             if resource.get(key):
                 parts.append(f"- {key}: {resource[key]}")
         raw = resource.get("raw") or {}
-        for key in ("build_pack", "ports_exposes", "ports_mappings", "health_check_enabled", "health_check_path",
-                    "limits_memory", "limits_cpus", "base_directory", "dockerfile_location", "start_command",
-                    "install_command", "build_command", "image", "type"):
+        for key in CONFIG_KEYS:
             if raw.get(key) not in (None, ""):
                 parts.append(f"- {key}: {raw[key]}")
 

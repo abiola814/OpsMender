@@ -49,8 +49,8 @@ Coolify has no dashboard plugin system, so OpsMender ships its own UI on its own
 | AI root-cause analysis | ✅ | BYO provider: Claude, Gemini, DeepSeek, OpenAI, OpenRouter, Groq, Mistral, Ollama |
 | Restart / start / stop / redeploy | ✅ | Opt-in, confirmed, audited |
 | Outbound alerts | ✅ | Generic webhook (Slack- and Discord-compatible payload) |
+| AI tool-calling investigations | ✅ | Read-only tools, capped at 8 calls, each shown on the incident |
 | GitHub fix pull requests | v0.2 | Needs GitHub App + repo checkout + patch validation |
-| AI tool-calling investigations | v0.2 | Let the model request more logs / statuses itself |
 | Optional push collector (servers behind NAT) | v0.3 | Tiny Go binary, same JSON as the probe |
 
 ## Components
@@ -61,7 +61,8 @@ Coolify has no dashboard plugin system, so OpsMender ships its own UI on its own
 | `opsmender/monitor/` | Scheduler: resource sync, deployment tracking, metrics polling, maintenance |
 | `opsmender/metrics/` | Probe script, installer generator, SSH runner, rate maths, storage, forecast |
 | `opsmender/diagnosis/` | Log fingerprinting, rule engine, secret redaction |
-| `opsmender/ai/` | Provider-neutral LLM layer (OpenAI-compatible + native Claude) and prompts |
+| `opsmender/ai/` | Provider-neutral LLM layer (OpenAI-compatible + native Claude), tool-calling loop, prompts |
+| `opsmender/investigation.py` | Read-only tools the AI can call while investigating an incident |
 | `opsmender/incidents.py` | Open / dedupe / resolve incidents, gather evidence, notify |
 | `opsmender/web/` | FastAPI routes, auth, CSRF, Jinja templates, static assets |
 | `opsmender/db.py` | SQLite (WAL) schema and helpers |
@@ -92,5 +93,5 @@ These are targets. Benchmarks on a 1 vCPU / 1 GB VPS are part of the v0.1 releas
 
 1. **v0.1 (this build):** everything marked ✅ above, Docker image, Coolify compose file, tests.
 2. **v0.1.x:** verify against several live Coolify versions, benchmark, fix API drift.
-3. **v0.2:** GitHub fix PRs, AI tool-calling investigation, per-resource notification routing.
+3. **v0.2:** GitHub fix PRs, per-resource notification routing.
 4. **v0.3:** optional push collector, Coolify one-click service template submission.

@@ -31,7 +31,7 @@
       <div class="card-head">
         <h2>AI diagnosis</h2>
         {% if ai_ready %}
-        <form method="post" action="/incidents/{{ inc.id }}/diagnose" class="inline" data-busy="Diagnosing… this can take up to a minute">
+        <form method="post" action="/incidents/{{ inc.id }}/diagnose" class="inline" data-busy="Diagnosing… this can take a minute or two">
           {{ csrf_field() }}
           <button class="btn {{ '' if inc.ai_diagnosis else 'primary' }} small" type="submit" {{ 'disabled' if ai_running }}>{{ 'Run again' if inc.ai_diagnosis else 'Diagnose with AI' }}</button>
         </form>
@@ -39,6 +39,18 @@
       </div>
       {% if inc.ai_diagnosis %}
         <div class="ai-answer">{{ inc.ai_diagnosis|markdown }}</div>
+        {% if ai_steps %}
+        <details class="ai-steps">
+          <summary class="small">How the AI got there · {{ ai_steps|length }} lookup{{ 's' if ai_steps|length != 1 }}</summary>
+          <ol>{% for step in ai_steps %}
+            <li>
+              <span class="mono small">{{ step.tool }}({% for k, v in step.input.items() %}{{ k }}={{ v }}{{ ', ' if not loop.last }}{% endfor %})</span>
+              {% if not step.ok %}<span class="badge b-warning plain">failed</span>{% endif %}
+              <details><summary class="small faint">Result</summary><pre class="code">{{ step.output }}</pre></details>
+            </li>
+          {% endfor %}</ol>
+        </details>
+        {% endif %}
         <p class="small faint" style="margin-top:12px">{{ inc.ai_model }} · {{ inc.ai_at|ago }}. AI can be wrong; check the evidence before acting.</p>
       {% elif ai_ready %}
         <p class="dim">Send the evidence below (secrets redacted) to <strong>{{ ai_label }}</strong> for a root-cause explanation and fix steps.</p>

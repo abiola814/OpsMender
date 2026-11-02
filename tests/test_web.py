@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 
 import pytest
@@ -88,6 +89,15 @@ def test_incident_page_shows_rule_findings(client, fake):
     assert "Deployment of api failed" in page.text
     assert "Build step failed" in page.text
     assert "Connect an AI provider" in page.text
+
+    steps = [{"tool": "get_env_var_names", "input": {"resource": "api"}, "ok": True, "output": '{"names":["PORT"]}'},
+             {"tool": "get_logs", "input": {}, "ok": False, "output": "Probe: <timeout>"}]
+    client.rt.db.execute("UPDATE incidents SET ai_diagnosis = 'Missing build script.', ai_model = 'x', ai_at = 1,"
+                         " ai_steps = ? WHERE id = ?", (json.dumps(steps), inc_id))
+    page = client.get(f"/incidents/{inc_id}")
+    assert "How the AI got there · 2 lookups" in page.text
+    assert "get_env_var_names(resource=api)" in page.text
+    assert "Probe: &lt;timeout&gt;" in page.text
 
 
 def test_actions_need_opt_in_and_typed_confirmation(client, fake):

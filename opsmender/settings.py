@@ -28,6 +28,8 @@ DEFAULTS: dict[str, Any] = {
     "ai_base_url": "",
     "ai_model": "",
     "ai_auto_diagnose": False,
+    "ai_investigate": True,      # let the AI call read-only tools for more evidence
+    "ai_max_tool_calls": 8,
     # Actions
     "actions_enabled": False,
     # Use what's already configured in Coolify
