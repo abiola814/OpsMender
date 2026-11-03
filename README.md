@@ -16,9 +16,14 @@ deployment and incident, with plain-language diagnosis from the AI provider you 
   Groq, Mistral, a local Ollama model, or any OpenAI-compatible endpoint. The AI investigates on
   its own with read-only tools (more logs, build logs, metrics, disk usage, config, environment
   variable names) and shows each lookup it made.
+- **Optimize**: which apps are close to their memory limit, have none, leak memory, keep the CPU
+  busy or sit idle, and what to set in Coolify instead. Disk space you can free safely, too.
+- **Fix pull requests**: the AI reads the app's GitHub repository, drafts the smallest fix and shows
+  you the diff. You open it as a draft pull request with one click. OpsMender never merges.
 - **Safe fixes**: restart, redeploy, stop and start. Off by default, confirmed by typing the
   resource name, and recorded in an audit log.
-- **Alerts**: Slack- or Discord-compatible webhook.
+- **Alerts** through your Coolify notification channels or a webhook, with per-resource rules:
+  send an app's alerts to its team's channel, only critical ones, or mute it.
 
 ## Why it's light
 
@@ -86,6 +91,50 @@ maps it to the Docker host.
 
 To remove it: `userdel -r opsmender; rm -rf /usr/local/lib/opsmender /etc/sudoers.d/opsmender`.
 
+## Optimize
+
+The **Optimize** page turns the last 7 days of container metrics into concrete advice. It needs
+server metrics, and about a day of data before sizing advice appears.
+
+| Finding | What OpsMender suggests |
+|---|---|
+| Close to its memory limit, or killed for running out of memory | A bigger limit: the peak plus 30% |
+| No memory limit | A limit of the peak plus 50%, so one leak can't take the whole server down |
+| Limit far above real use | A tighter limit (it frees nothing today, but protects the other apps) |
+| Memory that only goes up | A likely leak, with how long until it hits its limit; an incident once that's under 24 hours |
+| CPU-heavy or idle for days | A CPU limit or its own server; stopping it if nobody uses it |
+| Server short of memory, overcommitted, or mostly unused | The biggest users; a smaller or bigger server |
+| Disk space | Low-risk cleanups from the last disk analysis |
+
+Every item says exactly what to change in Coolify. For applications and databases, the suggested
+memory limit can be applied from OpsMender when Actions are on (confirmed, audited, and effective
+on the next restart). Services take limits from their compose file, so OpsMender shows the line to add.
+
+## Fix pull requests
+
+For an incident on an application deployed from GitHub, click **Draft a fix**. The AI reads the
+repository at the deployed branch (read-only), along with the usual investigation tools, and
+proposes the smallest change. OpsMender checks every edit before you see it: it must match the file
+exactly, stay small, parse (Python, JSON, TOML), contain no literal secrets, and not touch CI
+workflows. You review the diff on the incident page.
+
+Only **Open draft pull request** writes to GitHub: one commit on a new `opsmender/…` branch and a
+draft pull request into the deployed branch. If one of the changed files changed upstream since the
+draft, it refuses and asks you to draft again. OpsMender never pushes to existing branches and never
+merges; merging deploys through Coolify as usual.
+
+Connect GitHub in **Settings → GitHub** with a fine-grained personal access token limited to the
+repositories Coolify deploys, with **Contents** and **Pull requests** set to read and write.
+GitHub Enterprise works with its API URL.
+
+## Alert rules
+
+By default alerts go to every enabled Coolify notification channel and the optional OpsMender
+webhook. The **Alerts** card on a resource or server page changes that for it: send only to chosen
+destinations, only warnings and critical (or only critical), also to its own webhook (the owning
+team's Slack channel, say), or mute it. A server's rule covers the resources on it unless they have
+their own. Settings → Notifications lists every rule.
+
 ## AI providers
 
 | Provider | Notes |
@@ -134,12 +183,15 @@ Set these as environment variables. Everything else is configured in the UI.
 
 - Admin login uses scrypt password hashing and login rate limiting. Sessions are signed
   `SameSite=Strict` cookies, and every form carries a CSRF token.
-- The Coolify token, AI keys, SSH private key and webhook URLs are encrypted at rest.
+- The Coolify token, AI keys, GitHub token, SSH private key and webhook URLs are encrypted at rest.
 - A Coolify token with `read:sensitive` can read your servers' SSH keys and notification secrets.
   Treat it like root access. OpsMender uses Coolify's SSH keys only for the one-time probe install
   and never stores them.
 - OpsMender mounts no Docker socket and no host filesystem.
-- Secrets are redacted from log text before it is stored or sent to an AI provider.
+- Secrets are redacted from log text before it is stored or sent to an AI provider, and from
+  repository files before the AI reads them.
+- Fix pull requests need a separate GitHub token and a click to open. The AI can't push, merge, or
+  edit CI workflows.
 - Security headers include CSP, X-Frame-Options and nosniff.
 
 Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
@@ -168,6 +220,6 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## Status
 
-v0.1, early. Tested against a simulated Coolify API and real Linux servers over SSH, but **not yet
-against a wide range of live Coolify versions**. If something doesn't match your Coolify
+v0.2 in progress, early. Tested against a simulated Coolify API, a simulated GitHub API and real
+Linux servers over SSH, but **not yet against a wide range of live Coolify versions**. If something doesn't match your Coolify
 release, please open an issue with your version.

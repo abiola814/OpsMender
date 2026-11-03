@@ -71,7 +71,8 @@ def resolve_incident(rt: Runtime, fingerprint: str, note: str | None = None) -> 
     rt.db.add_event("incident_resolved", message, "info", row["resource_uuid"], row["id"])
     if rt.settings.bool("notify_on_resolve"):
         spawn(dispatch(rt, Alert(title=message, severity="resolved", kind=f"{row['kind']}_resolved",
-                                 url=incident_url(rt, row["id"]))))
+                                 url=incident_url(rt, row["id"]), resource_uuid=row["resource_uuid"],
+                                 server_uuid=row["server_uuid"], level=row["severity"])))
     return True
 
 
@@ -144,7 +145,8 @@ async def notify_incident(rt: Runtime, incident_id: int) -> None:
     if top and top["title"] not in body:
         body = (body + "\n" if body else "") + f"Likely cause: {top['title']}"
     await dispatch(rt, Alert(title=inc["title"], body=body, severity=inc["severity"], kind=inc["kind"],
-                             url=incident_url(rt, incident_id)))
+                             url=incident_url(rt, incident_id), resource_uuid=inc["resource_uuid"],
+                             server_uuid=inc["server_uuid"]))
 
 
 async def enrich(rt: Runtime, incident_id: int, notify: bool = False) -> None:

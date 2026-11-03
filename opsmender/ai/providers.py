@@ -137,16 +137,17 @@ async def complete(cfg: AIConfig, user_prompt: str, system: str = SYSTEM_PROMPT,
 
 
 async def investigate(cfg: AIConfig, user_prompt: str, tools: list[Tool], run_tool: ToolRunner,
-                      max_calls: int = 8) -> Investigation:
-    """Let the model call read-only tools, at most ``max_calls`` times, before it answers.
+                      max_calls: int = 8, system: str | None = None, max_tokens: int = 4000) -> Investigation:
+    """Let the model call tools, at most ``max_calls`` times, before it answers.
 
+    ``max_tokens`` applies to OpenAI-compatible providers; Claude always gets 16000.
     Raises ToolsUnsupported when the provider or model rejects tool definitions.
     """
     _check(cfg)
-    system = investigation_prompt(max_calls)
+    system = system or investigation_prompt(max_calls)
     if cfg.preset.protocol == "anthropic":
         return await _anthropic_investigate(cfg, user_prompt, system, tools, run_tool, max_calls)
-    return await _openai_investigate(cfg, user_prompt, system, tools, run_tool, max_calls)
+    return await _openai_investigate(cfg, user_prompt, system, tools, run_tool, max_calls, max_tokens)
 
 
 async def _run_calls(run_tool: ToolRunner, calls: list[tuple[str, Any]], steps: list[dict[str, Any]],
@@ -309,14 +310,14 @@ async def _openai_compatible(cfg: AIConfig, prompt: str, system: str, max_tokens
 
 
 async def _openai_investigate(cfg: AIConfig, prompt: str, system: str, tools: list[Tool],
-                              run_tool: ToolRunner, max_calls: int) -> Investigation:
+                              run_tool: ToolRunner, max_calls: int, max_tokens: int = 4000) -> Investigation:
     tool_defs = [{"type": "function", "function": {"name": t.name, "description": t.description,
                                                     "parameters": t.parameters}} for t in tools]
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
     steps: list[dict[str, Any]] = []
     async with httpx.AsyncClient(timeout=180.0) as client:
         for _ in range(max_calls + 2):
-            body = {"model": cfg.model, "messages": messages, "max_tokens": 4000, "tools": tool_defs,
+            body = {"model": cfg.model, "messages": messages, "max_tokens": max_tokens, "tools": tool_defs,
                     "tool_choice": "auto" if len(steps) < max_calls else "none"}
             message = await _openai_post(client, cfg, body)
             calls = [c for c in message.get("tool_calls") or [] if isinstance(c, dict)]

@@ -11,9 +11,11 @@ from fastapi.responses import JSONResponse
 
 from ...adapters.base import health_of
 from ...adapters.coolify import CoolifyError
+from ...advice import all_advice
 from ...diagnosis.rules import analyze
 from ...incidents import container_for, fetch_logs, resource_row
 from ...metrics.store import container_history
+from ...notify import destinations, get_route
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
 
 router = APIRouter()
@@ -50,9 +52,12 @@ async def resource_detail(request: Request, uuid: str, user: str = Depends(curre
     for point in series:
         point["mem_mb"] = (point["mem_bytes"] or 0) / 1_048_576
     mem_cap = max([p["mem_mb"] for p in series] + [1]) * 1.15
+    advice = [a for a in all_advice(rt, metrics_server["uuid"]) if (a["resource"] or {}).get("uuid") == uuid] \
+        if metrics_server else []
     return render(
         request, "resource.html", r=resource, server=server, container=container, series=series, mem_cap=mem_cap,
-        health=health_of(resource["status"]),
+        health=health_of(resource["status"]), advice=advice,
+        route=get_route(rt, "resource", uuid), destinations=await destinations(rt),
         deployments=rt.db.all("SELECT * FROM deployments WHERE app_uuid = ? ORDER BY created_at DESC LIMIT 15", (uuid,)),
         incidents=rt.db.all("SELECT * FROM incidents WHERE resource_uuid = ? ORDER BY status = 'open' DESC,"
                             " last_seen DESC LIMIT 10", (uuid,)),

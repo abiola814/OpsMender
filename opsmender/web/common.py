@@ -22,6 +22,7 @@ from ..metrics.disk import human as dsize
 from ..runtime import Runtime
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+TEMPLATES.env.auto_reload = False  # templates ship with the package; skip a stat() per render
 
 
 class LoginRequired(Exception):

@@ -10,6 +10,8 @@ from ..db import Database
 RAW_RETENTION = 24 * 3600
 ROLLUP_RETENTION = 30 * 24 * 3600
 ROLLUP_BUCKET = 15 * 60
+CONTAINER_BUCKET = 3600
+CONTAINER_ROLLUP_RETENTION = 14 * 24 * 3600
 
 
 def save_sample(db: Database, server_uuid: str, m: dict[str, Any]) -> None:
@@ -72,7 +74,17 @@ def rollup_and_prune(db: Database) -> None:
         (cutoff,),
     )
     db.execute("DELETE FROM metric_samples WHERE ts < ?", (cutoff,))
-    db.execute("DELETE FROM container_samples WHERE ts < ?", (cutoff,))
+    # Containers roll up hourly (aligned the same way) and keep two weeks, enough to spot leaks and idle apps.
+    c_cutoff = int((now - RAW_RETENTION) // CONTAINER_BUCKET) * CONTAINER_BUCKET
+    db.execute(
+        f"""INSERT OR REPLACE INTO container_rollups (server_uuid, name, bucket_ts, samples, cpu_avg, cpu_max, mem_avg, mem_max)
+        SELECT server_uuid, name, CAST(ts / {CONTAINER_BUCKET} AS INTEGER) * {CONTAINER_BUCKET} AS bucket,
+               COUNT(*), AVG(cpu_pct), MAX(cpu_pct), AVG(mem_bytes), MAX(mem_bytes)
+        FROM container_samples WHERE ts < ? GROUP BY server_uuid, name, bucket""",
+        (c_cutoff,),
+    )
+    db.execute("DELETE FROM container_samples WHERE ts < ?", (c_cutoff,))
+    db.execute("DELETE FROM container_rollups WHERE bucket_ts < ?", (now - CONTAINER_ROLLUP_RETENTION,))
     db.execute("DELETE FROM metric_rollups WHERE bucket_ts < ?", (now - ROLLUP_RETENTION,))
     db.execute("DELETE FROM events WHERE ts < ?", (now - ROLLUP_RETENTION,))
 

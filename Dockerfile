@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.title="OpsMender" \
       org.opencontainers.image.licenses="Apache-2.0"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2 \
     OPSMENDER_DATA_DIR=/data \
     PORT=8000
 COPY --from=build /install /usr/local

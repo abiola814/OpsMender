@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import status_badge, csrf_field, incident_row with context %}
+{% from "macros.html" import status_badge, csrf_field, incident_row, advice_item with context %}
 {% block title %}{{ r.name }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -28,6 +28,13 @@
         {{ series|chart('mem_mb', 120, mem_cap) }}
         <div class="small faint">{% if container.mem_limit %}Limit {{ container.mem_limit|size }}{% else %}No memory limit set{% endif %} · {{ container.restarts }} restarts</div>
       </div>
+    </div>
+    {% endif %}
+
+    {% if advice %}
+    <div class="card">
+      <h2>Recommendations</h2>
+      <ul class="list">{% for a in advice %}{{ advice_item(a, actions_enabled, show_resource=False) }}{% endfor %}</ul>
     </div>
     {% endif %}
 
@@ -94,6 +101,8 @@
       <h2>Incidents</h2>
       {% if incidents %}<ul class="list">{% for i in incidents %}{{ incident_row(i) }}{% endfor %}</ul>{% else %}<div class="empty">None so far.</div>{% endif %}
     </div>
+
+    {% set route_kind, route_uuid = 'resource', r.uuid %}{% include "_alert_route.html" %}
   </div>
 </div>
 {% endblock %}

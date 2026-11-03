@@ -32,6 +32,8 @@ DEFAULTS: dict[str, Any] = {
     "ai_max_tool_calls": 8,
     # Actions
     "actions_enabled": False,
+    # GitHub fix pull requests
+    "github_api_url": "https://api.github.com",
     # Use what's already configured in Coolify
     "auto_metrics": True,        # install the probe with Coolify's SSH keys (needs read:sensitive)
     "notify_via_coolify": True,  # send alerts through the team's Coolify notification channels
@@ -40,7 +42,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 # Keys whose values are encrypted with SecretBox.
-SECRET_KEYS = {"coolify_token", "ai_api_key", "ssh_private_key", "webhook_token", "notify_webhook_url"}
+SECRET_KEYS = {"coolify_token", "ai_api_key", "ssh_private_key", "webhook_token", "notify_webhook_url", "github_token"}
 
 
 class Settings:

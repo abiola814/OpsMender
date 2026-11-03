@@ -104,6 +104,8 @@
   </div>
 </div>
 
+<div style="margin-top:16px">{% set route_kind, route_uuid = 'server', server.uuid %}{% include "_alert_route.html" %}</div>
+
 <div class="card" id="setup" style="margin-top:16px">
   <div class="card-head"><h2>Metrics collection</h2>
     {% if server.metrics_enabled %}

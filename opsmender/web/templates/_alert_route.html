@@ -1,0 +1,29 @@
+{# Alert rule for one resource or server. Needs: route_kind, route_uuid, route (or none), destinations. #}
+{% from "macros.html" import csrf_field with context %}
+<div class="card" id="alerts">
+  <h2>Alerts</h2>
+  <form method="post" action="/alerts/{{ route_kind }}/{{ route_uuid }}">
+    {{ csrf_field() }}
+    {% set mode = route.mode if route else 'default' %}
+    <div class="field">
+      <label class="check"><input type="radio" name="mode" value="default" {{ 'checked' if mode == 'default' }}> Send to the usual destinations</label>
+      <label class="check"><input type="radio" name="mode" value="only" {{ 'checked' if mode == 'only' }}> Send only to:</label>
+      {% if destinations %}
+      <div style="margin:4px 0 0 24px">{% for d in destinations %}
+        <label class="check small"><input type="checkbox" name="dest:{{ d.id }}" {{ 'checked' if route and d.id in route.destinations }} {{ 'disabled' if not d.ready }}> {{ d.label }}{% if not d.ready %} <span class="faint">({{ d.problem or "can't use" }})</span>{% endif %}</label>
+      {% endfor %}</div>
+      {% else %}<div class="small faint" style="margin-left:24px">No destinations configured yet (Settings → Notifications).</div>{% endif %}
+      <label class="check"><input type="radio" name="mode" value="mute" {{ 'checked' if mode == 'mute' }}> Mute: incidents still show up here, no alerts are sent</label>
+      {% if route_kind == 'server' %}<div class="help">Applies to the server and every resource on it, unless a resource has its own rule.</div>{% endif %}
+    </div>
+    <div class="field"><label for="min_severity">Minimum severity</label>
+      <select id="min_severity" name="min_severity">
+        {% for sev, label in [('info', 'Everything'), ('warning', 'Warnings and critical'), ('critical', 'Critical only')] %}
+        <option value="{{ sev }}" {{ 'selected' if (route.min_severity if route else 'info') == sev }}>{{ label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="extra_webhook">Also send to this webhook <span class="faint">(optional)</span></label>
+      <input id="extra_webhook" name="extra_webhook" type="url" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if route and route.extra_webhook else 'e.g. the Slack or Discord channel of the team that owns it' }}">
+      {% if route and route.extra_webhook %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_webhook"> Remove saved webhook</label>{% endif %}</div>
+    <div class="btn-row"><button class="btn" type="submit">Save</button><button class="btn" type="submit" name="test" value="1">Save &amp; send test</button></div>
+  </form>
+</div>

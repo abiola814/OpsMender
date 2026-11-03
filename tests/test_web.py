@@ -170,3 +170,57 @@ def test_markdown_is_escaped():
     html = str(markdown("## Fix\n1. Set `PORT`\n<script>alert(1)</script>\n```\nrm -rf /\n```"))
     assert "<h4>Fix</h4>" in html and "<code>PORT</code>" in html
     assert "<script>" not in html and "&lt;script&gt;" in html
+
+
+def test_optimize_page_and_applying_a_limit(client, fake):
+    setup_admin(client)
+    asyncio.run(sync(client.rt))
+    mb = 1_048_576
+    client.rt.db.execute("UPDATE servers SET metrics_enabled = 1, current_metrics = ? WHERE uuid = 'srv1'", (json.dumps(
+        {"mem_total": 4096 * mb, "mem_used": 1024 * mb, "ncpu": 2, "containers": [
+            {"name": "app1-123456789012", "state": "running", "mem_bytes": 470 * mb, "mem_limit": 512 * mb,
+             "started_at": "2026-01-01T00:00:00Z"}]}),))
+    page = client.get("/optimize")
+    assert page.status_code == 200 and "api is close to its memory limit" in page.text
+    assert "/optimize/apply?resource=app1&amp;limit=" in page.text
+    assert "close to its memory limit" in client.get("/resources/app1").text
+
+    confirm = client.get("/optimize/apply?resource=app1&limit=640m")
+    assert confirm.status_code == 200 and "Actions are off" in confirm.text
+    assert client.get("/optimize/apply?resource=svc1&limit=640m").status_code == 400   # services: compose only
+    assert client.get("/optimize/apply?resource=app1&limit=640;x").status_code == 400
+
+    client.rt.settings.set("actions_enabled", True)
+    form = {"csrf": csrf_of(client.get("/optimize/apply?resource=app1&limit=640m").text), "resource": "app1",
+            "limit": "640m", "confirm": "wrong"}
+    client.post("/optimize/apply", data=form)
+    assert fake.patches == []
+    r = client.post("/optimize/apply", data={**form, "confirm": "api"}, follow_redirects=False)
+    assert r.headers["location"] == "/resources/app1"
+    assert fake.patches == [("/applications/app1", {"limits_memory": "640m"})]
+    assert client.rt.db.one("SELECT * FROM audit WHERE action = 'set_memory_limit'")["detail"] == "640m"
+
+
+def test_alert_rule_form(client, fake, monkeypatch):
+    from opsmender import notify
+    sent = []
+
+    async def fake_post(url, **kwargs):
+        sent.append(url)
+        return True, "sent"
+    monkeypatch.setattr(notify, "_post", fake_post)
+    setup_admin(client)
+    asyncio.run(sync(client.rt))
+    page = client.get("/resources/app1")
+    assert 'action="/alerts/resource/app1"' in page.text and "Coolify Telegram" in page.text
+    token = csrf_of(page.text)
+    r = client.post("/alerts/resource/app1", data={"csrf": token, "mode": "only", "min_severity": "info"})
+    assert "Pick at least one destination" in r.text
+    r = client.post("/alerts/resource/app1", data={"csrf": token, "mode": "only", "min_severity": "warning",
+                                                   "dest:coolify:telegram": "on", "test": "1"})
+    assert "Coolify Telegram: sent" in r.text
+    assert sent == ["https://api.telegram.org/bot123:abc/sendMessage"]
+    assert notify.get_route(client.rt, "resource", "app1").destinations == ("coolify:telegram",)
+    assert "selected destinations" in client.get("/settings").text
+    assert client.get("/servers/srv1").text.count('action="/alerts/server/srv1"') == 1
+    assert client.post("/alerts/resource/nope", data={"csrf": token}).status_code == 404

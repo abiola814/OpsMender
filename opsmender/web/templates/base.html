@@ -20,6 +20,7 @@
       <a href="/resources" class="{{ 'active' if path.startswith('/resources') }}">Resources</a>
       <a href="/incidents" class="{{ 'active' if path.startswith('/incidents') }}">Incidents
         {% if crit %}<span class="count">{{ crit }}</span>{% elif warn %}<span class="count warn">{{ warn }}</span>{% endif %}</a>
+      <a href="/optimize" class="{{ 'active' if path.startswith('/optimize') }}">Optimize</a>
       <a href="/activity" class="{{ 'active' if path.startswith('/activity') }}">Activity</a>
       <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
     </nav>

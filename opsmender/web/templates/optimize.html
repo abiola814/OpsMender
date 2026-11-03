@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "macros.html" import severity, advice_item with context %}
+{% block title %}Optimize{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Optimize</h1>
+    <div class="sub">Memory, CPU and disk that are at risk or going to waste, from the last 7 days of metrics. Nothing changes unless you apply it.</div>
+  </div>
+  {% if servers|length > 1 %}
+  <form method="get" action="/optimize" class="inline">
+    <select name="server" aria-label="Server">
+      <option value="">All servers</option>
+      {% for s in servers %}<option value="{{ s.uuid }}" {{ 'selected' if server == s.uuid }}>{{ s.name }}</option>{% endfor %}
+    </select>
+    <button class="btn small" type="submit">Show</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not any_metrics %}
+<div class="card">
+  <h2>Turn on server metrics first</h2>
+  <p class="dim">Recommendations come from per-container CPU and memory history. Enable metrics on a server and they start appearing after a day of data (leaks and near-limit warnings sooner).</p>
+  <a class="btn primary" href="/servers">Go to servers</a>
+</div>
+{% else %}
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Needs attention</div>
+    <div class="value">{{ summary.critical + summary.warning }}</div>
+    <div class="meta">
+      <span class="badge b-critical">{{ summary.critical }} critical</span>
+      <span class="badge b-warning">{{ summary.warning }} warning</span>
+    </div>
+  </div>
+  <div class="tile">
+    <div class="label">Apps without a memory limit</div>
+    <div class="value">{{ summary.no_limit }}</div>
+    <div class="meta"><span>one leak can take the server down</span></div>
+  </div>
+  <div class="tile">
+    <div class="label">Memory held by idle apps</div>
+    <div class="value">{{ summary.idle_memory|size if summary.idle_memory else '0' }}</div>
+    <div class="meta"><span>freed by stopping them</span></div>
+  </div>
+  <div class="tile">
+    <div class="label">Disk you can free safely</div>
+    <div class="value">{{ summary.disk_freeable|dsize if summary.disk_freeable else '0' }}</div>
+    <div class="meta"><span>low-risk cleanups</span></div>
+  </div>
+</div>
+
+{% if not items %}
+<div class="card"><div class="empty">Nothing to improve right now. New apps need about a day of metrics before sizing advice appears.</div></div>
+{% endif %}
+{% for cat, label in categories.items() %}
+  {% set group = items|selectattr('category', 'equalto', cat)|list %}
+  {% if group %}
+  <div class="card">
+    <h2>{{ label }} <span class="faint small">{{ group|length }}</span></h2>
+    <ul class="list">{% for a in group %}{{ advice_item(a, actions_enabled) }}{% endfor %}</ul>
+  </div>
+  {% endif %}
+{% endfor %}
+<p class="small faint">Sizing uses the highest memory each app reached in the last 7 days plus headroom. Apps are matched across redeploys, so a new deployment doesn't reset their history.</p>
+{% endif %}
+{% endblock %}

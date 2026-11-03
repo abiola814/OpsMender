@@ -1,4 +1,4 @@
-"""Incident list and detail, AI diagnosis, re-collecting evidence, manual resolve."""
+"""Incident list and detail, AI diagnosis, fix pull requests, re-collecting evidence, manual resolve."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ...ai.providers import AIError
 from ...db import dumps, loads
+from ...fixes import availability, diff_lines, draft_fix, open_pull_request
+from ...github import GitHubError
 from ...incidents import ai_config, diagnose, enrich, resource_row
 from ...metrics.disk import RISK_TEXT
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
@@ -35,6 +37,7 @@ async def incident_detail(request: Request, incident_id: int, user: str = Depend
     resource = resource_row(rt, inc["resource_uuid"])
     server = rt.db.one("SELECT uuid, name FROM servers WHERE uuid = ?", (inc["server_uuid"],)) if inc["server_uuid"] else None
     cfg = ai_config(rt)
+    fix = loads(inc["fix_proposal"])
     return render(
         request, "incident.html", inc=inc, resource=resource, server=server,
         evidence=loads(inc["evidence"], {}) or {}, findings=loads(inc["findings"], {}) or {},
@@ -45,6 +48,8 @@ async def incident_detail(request: Request, incident_id: int, user: str = Depend
         actions=actions_for(resource) if resource else [], action_labels=ACTION_LABELS,
         events=rt.db.all("SELECT * FROM events WHERE incident_id = ? ORDER BY ts", (incident_id,)),
         risk_text=RISK_TEXT,
+        fix=fix, fix_diffs=[{**f, "lines": diff_lines(f)} for f in (fix or {}).get("files", [])],
+        fix_unavailable=availability(rt, inc, resource), fix_running=-incident_id in rt.ai_inflight,
     )
 
 
@@ -89,3 +94,38 @@ async def resolve(request: Request, incident_id: int, user: str = Depends(curren
         rt.db.add_event("incident_resolved", f"{user} resolved: {inc['title']}", "info", inc["resource_uuid"], incident_id)
         rt.db.audit(user, "resolve_incident", "ok", "incident", str(incident_id), inc["title"])
     return redirect(f"/incidents/{incident_id}")
+
+
+@router.post("/incidents/{incident_id}/fix")
+async def draft_fix_route(request: Request, incident_id: int, user: str = Depends(current_user)):
+    await form_with_csrf(request)
+    rt = rt_of(request)
+    try:
+        draft = await draft_fix(rt, incident_id, user)
+        flash(request, "Fix drafted. Review the change below before opening a pull request." if draft["files"]
+              else "The AI found no code change to make; see why below.", "success" if draft["files"] else "info")
+    except AIError as exc:
+        rt.db.audit(user, "draft_fix", "error", "incident", str(incident_id), detail=str(exc))
+        flash(request, f"Couldn't draft a fix: {exc}", "error")
+    return redirect(f"/incidents/{incident_id}#fix")
+
+
+@router.post("/incidents/{incident_id}/fix/open")
+async def open_fix_pr(request: Request, incident_id: int, user: str = Depends(current_user)):
+    await form_with_csrf(request)
+    rt = rt_of(request)
+    try:
+        url = await open_pull_request(rt, incident_id, user)
+        flash(request, f"Pull request opened: {url}", "success")
+    except GitHubError as exc:
+        flash(request, f"Couldn't open the pull request: {exc}", "error")
+    return redirect(f"/incidents/{incident_id}#fix")
+
+
+@router.post("/incidents/{incident_id}/fix/discard")
+async def discard_fix(request: Request, incident_id: int, user: str = Depends(current_user)):
+    await form_with_csrf(request)
+    rt = rt_of(request)
+    rt.db.execute("UPDATE incidents SET fix_proposal = NULL WHERE id = ? AND fix_pr_url IS NULL", (incident_id,))
+    rt.db.audit(user, "discard_fix", "ok", "incident", str(incident_id))
+    return redirect(f"/incidents/{incident_id}#fix")

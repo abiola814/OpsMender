@@ -61,6 +61,21 @@
     </form>
   </div>
 
+  <div class="card" id="github">
+    <h2>GitHub fix pull requests <span class="faint small">(optional)</span></h2>
+    <p class="small dim">From an incident, the AI reads the app's repository, drafts the smallest fix and shows you the diff. Only when you click “Open pull request” does OpsMender push: one commit on a new branch and a draft pull request. It never pushes to existing branches and never merges.</p>
+    <form method="post" action="/settings/github">
+      {{ csrf_field() }}
+      <div class="field"><label for="github_token">Token</label>
+        <input id="github_token" name="github_token" type="password" autocomplete="off" placeholder="{{ '•••••••• saved' ~ (' (' ~ s.github_login ~ ')' if s.github_login else '') ~ '; leave blank to keep' if has_github else 'Fine-grained personal access token' }}">
+        <div class="help">Create a <strong>fine-grained</strong> token on GitHub (Settings → Developer settings) for only the repositories Coolify deploys, with <strong>Contents: read and write</strong> and <strong>Pull requests: read and write</strong>.</div>
+        {% if has_github %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_token"> Disconnect GitHub</label>{% endif %}</div>
+      <div class="field"><label for="github_api_url">API URL <span class="faint">(GitHub Enterprise only)</span></label>
+        <input id="github_api_url" name="github_api_url" type="url" value="{{ s.github_api_url }}" placeholder="https://api.github.com"></div>
+      <button class="btn" type="submit">Save &amp; test</button>
+    </form>
+  </div>
+
   <div class="card" id="actions">
     <h2>Actions</h2>
     <form method="post" action="/settings/actions">
@@ -110,6 +125,13 @@
         <input id="notify_webhook_url" name="notify_webhook_url" type="url" autocomplete="off" placeholder="{{ '•••••••• saved; leave blank to keep' if has_notify else 'Slack or Discord incoming webhook URL' }}">
         {% if has_notify %}<label class="check small" style="margin-top:6px"><input type="checkbox" name="clear_webhook"> Remove saved webhook</label>{% endif %}</div>
       <div class="field"><label class="check"><input type="checkbox" name="notify_on_resolve" {{ 'checked' if s.notify_on_resolve }}> Also notify when incidents resolve</label></div>
+      <h3>Per-resource rules</h3>
+      {% if routes %}
+      <ul class="list" style="margin-bottom:14px">{% for r in routes %}
+        <li><span><a href="/{{ 'resources' if r.target_kind == 'resource' else 'servers' }}/{{ r.target_uuid }}#alerts">{{ r.name or r.target_uuid }}</a> <span class="kind">{{ r.target_kind }}</span></span>
+            <span class="small dim">{{ {'default': 'usual destinations', 'only': 'selected destinations', 'mute': 'muted'}[r.mode] }}{% if r.min_severity != 'info' %} · {{ r.min_severity }}+{% endif %}{% if r.extra_webhook %} · own webhook{% endif %}</span></li>
+      {% endfor %}</ul>
+      {% else %}<p class="small dim">Send an app's alerts to its team's channel, only critical ones, or mute a noisy one: open the resource (or server) and use its Alerts card.</p>{% endif %}
       <div class="btn-row"><button class="btn" type="submit">Save</button><button class="btn" type="submit" name="test" value="1">Save &amp; send test to all</button></div>
     </form>
   </div>

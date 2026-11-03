@@ -223,6 +223,16 @@ class CoolifyClient:
             data = await self._request("GET", path)
         return _message(data) or f"{action.capitalize()} requested."
 
+    async def set_memory_limit(self, kind: str, uuid: str, limit: str) -> str:
+        """Set an application's or database's Maximum Memory Limit (Docker size, e.g. "512m").
+
+        Takes effect when the resource next restarts.
+        """
+        if kind not in ("application", "database"):
+            raise CoolifyError(f"Coolify can't set a memory limit on a {kind} through the API")
+        data = await self._request("PATCH", f"/{KIND_PATHS[kind]}/{uuid}", json={"limits_memory": limit})
+        return _message(data) or f"Memory limit set to {limit}."
+
 
 def _logs_text(data: Any) -> str:
     if isinstance(data, dict):

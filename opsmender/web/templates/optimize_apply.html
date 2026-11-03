@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Set memory limit{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/optimize">Optimize</a> / <a href="/resources/{{ r.uuid }}">{{ r.name }}</a></div>
+    <h1>Set memory limit</h1>
+  </div>
+</div>
+<div class="card" style="max-width:640px">
+  <dl class="kv">
+    <dt>Resource</dt><dd>{{ r.name }} <span class="kind">{{ r.kind }}</span></dd>
+    <dt>Current limit</dt><dd>{{ current or 'none' }}</dd>
+    <dt>New limit</dt><dd><strong>{{ limit }}</strong></dd>
+  </dl>
+  <p class="small dim">OpsMender changes the Maximum Memory Limit in Coolify. It applies the next time {{ r.name }} restarts; nothing restarts now. If the app later needs more than this, the kernel restarts it instead of letting it starve the rest of the server.</p>
+  {% if not actions_enabled %}
+    <p class="small">Actions are off. Turn them on in <a href="/settings#actions">Settings</a> (your Coolify token also needs write permission), or set it yourself in Coolify → {{ r.name }} → Resource Limits.</p>
+  {% else %}
+  <form method="post" action="/optimize/apply">
+    {{ csrf_field() }}
+    <input type="hidden" name="resource" value="{{ r.uuid }}">
+    <input type="hidden" name="limit" value="{{ limit }}">
+    <div class="field"><label for="confirm">Type <code>{{ r.name }}</code> to confirm</label><input id="confirm" name="confirm" type="text" autocomplete="off" required></div>
+    <div class="btn-row"><button class="btn primary" type="submit">Set limit</button><a class="btn" href="/optimize">Cancel</a></div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

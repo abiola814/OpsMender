@@ -59,6 +59,39 @@
       {% endif %}
     </div>
 
+    {% if resource and resource.kind == 'application' %}
+    <div class="card" id="fix">
+      <div class="card-head"><h2>Fix pull request</h2>{% if fix and fix.repo %}<span class="small faint">{{ fix.repo }} · {{ fix.branch }}</span>{% endif %}</div>
+      {% if inc.fix_pr_url %}
+        <p>Pull request opened: <a href="{{ inc.fix_pr_url }}" target="_blank" rel="noopener noreferrer">{{ inc.fix_pr_url }}</a></p>
+        <p class="small dim">Review it and let CI run before merging. Merging deploys it through Coolify as usual.</p>
+      {% elif fix %}
+        {% if fix.files %}
+          <h3 style="margin-top:0">{{ fix.title }}</h3>
+          <div class="ai-answer">{{ fix.explanation|markdown }}</div>
+          {% for f in fix_diffs %}
+            <div class="small mono" style="margin-top:12px"><strong>{{ f.path }}</strong>{% if f.original is none %} <span class="badge b-info plain">new file</span>{% endif %}</div>
+            <pre class="diff">{% for kind, line in f.lines %}<span class="d-{{ kind }}">{{ line }}</span>{% endfor %}</pre>
+          {% endfor %}
+          <p class="small faint">Drafted {{ fix.at|ago }} by {{ fix.model }}. Checked: exact edits, size, syntax (Python, JSON, TOML) and no literal secrets. Not run or tested.</p>
+          <div class="btn-row">
+            <form method="post" action="/incidents/{{ inc.id }}/fix/open" class="inline" data-busy="Opening pull request…">{{ csrf_field() }}<button class="btn primary" type="submit">Open draft pull request on {{ fix.repo }}</button></form>
+            <form method="post" action="/incidents/{{ inc.id }}/fix/discard" class="inline">{{ csrf_field() }}<button class="btn" type="submit">Discard</button></form>
+          </div>
+          <p class="small faint" style="margin-top:6px">Creates one commit on a new branch and a draft pull request into {{ fix.branch }}. Nothing is merged or deployed.</p>
+        {% else %}
+          <p class="dim">No code change proposed. {{ fix.summary }}</p>
+          <form method="post" action="/incidents/{{ inc.id }}/fix/discard" class="inline">{{ csrf_field() }}<button class="btn small" type="submit">Clear</button></form>
+        {% endif %}
+      {% elif fix_unavailable %}
+        <p class="small dim">{{ fix_unavailable }}</p>
+      {% else %}
+        <p class="small dim">The AI reads {{ resource.git_repository }} (read-only), drafts the smallest change that fixes this, and shows it here for review. Nothing is pushed until you open the pull request.</p>
+        <form method="post" action="/incidents/{{ inc.id }}/fix" data-busy="Drafting a fix… (up to a few minutes)">{{ csrf_field() }}<button class="btn" type="submit" {{ 'disabled' if fix_running }}>{{ 'Drafting…' if fix_running else 'Draft a fix' }}</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="card">
       <h2>What OpsMender found</h2>
       {% if findings.findings %}

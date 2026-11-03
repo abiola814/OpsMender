@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     ai_model TEXT,
     ai_at REAL,
     ai_steps TEXT,           -- the tool calls the AI made while investigating
+    fix_proposal TEXT,       -- a drafted code fix awaiting review (JSON)
+    fix_pr_url TEXT,         -- the pull request opened from it
     resolved_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_fp ON incidents(fingerprint, status);
@@ -152,6 +154,29 @@ CREATE TABLE IF NOT EXISTS container_samples (
 );
 CREATE INDEX IF NOT EXISTS idx_csamples ON container_samples(server_uuid, name, ts);
 
+CREATE TABLE IF NOT EXISTS container_rollups (
+    server_uuid TEXT NOT NULL,
+    name TEXT NOT NULL,
+    bucket_ts REAL NOT NULL,  -- hourly
+    samples INTEGER NOT NULL,
+    cpu_avg REAL,
+    cpu_max REAL,
+    mem_avg REAL,
+    mem_max INTEGER,
+    PRIMARY KEY (server_uuid, name, bucket_ts)
+);
+
+CREATE TABLE IF NOT EXISTS notification_routes (
+    target_kind TEXT NOT NULL,      -- resource | server
+    target_uuid TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'default',
+    min_severity TEXT NOT NULL DEFAULT 'info',
+    destinations TEXT,              -- JSON list, for mode 'only'
+    extra_webhook TEXT,             -- encrypted
+    updated_at REAL,
+    PRIMARY KEY (target_kind, target_uuid)
+);
+
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY,
     ts REAL NOT NULL,
@@ -174,6 +199,8 @@ MIGRATIONS = [
     ("servers", "auto_setup_at", "REAL"),
     ("servers", "auto_setup_error", "TEXT"),
     ("incidents", "ai_steps", "TEXT"),
+    ("incidents", "fix_proposal", "TEXT"),
+    ("incidents", "fix_pr_url", "TEXT"),
 ]
 
 

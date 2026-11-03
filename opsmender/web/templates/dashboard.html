@@ -60,6 +60,12 @@
   </div>
 </div>
 
+{% if advice.critical or advice.warning %}
+<div class="flash {{ 'error' if advice.critical else 'info' }}">
+  {{ advice.critical + advice.warning }} resource recommendation{{ 's' if advice.critical + advice.warning != 1 }} need{{ 's' if advice.critical + advice.warning == 1 }} attention (memory limits, leaks, busy or idle apps, disk). <a href="/optimize">Review in Optimize →</a>
+</div>
+{% endif %}
+
 <div class="split">
   <div class="stack">
     <div class="card">

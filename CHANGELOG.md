@@ -8,6 +8,26 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Optimize page: right-sizing advice for every app from the last 7 days of metrics. Flags apps
+  close to their memory limit (with the bigger limit to set), apps with no memory limit, limits far
+  above real use, apps using a large share of a server that's short of memory, memory leaks (with
+  the time until the limit is reached), CPU-heavy and idle apps, servers that are short of memory,
+  overcommitted or oversized, and disk space that can be freed. Each item says exactly what to change
+  in Coolify; for applications and databases, the suggested memory limit can be applied from
+  OpsMender (with Actions on, confirmed and audited). Shown on resource pages and the overview too.
+- Memory-leak incidents: an app whose memory keeps growing opens an incident when it's predicted to
+  reach its limit (or the server's free memory) within 24 hours.
+- Container metrics are kept as hourly rollups for 14 days (previously 24 hours), and an app's
+  history is kept across redeploys.
+- Fix pull requests (GitHub): from an incident on an application deployed from GitHub, the AI reads
+  the repository (read-only), drafts the smallest fix and shows the diff for review. Edits are checked
+  (exact matches, size, Python/JSON/TOML syntax, no literal secrets, no CI workflow changes). Only
+  "Open pull request" writes to GitHub: one commit on a new branch and a draft pull request.
+  OpsMender never pushes to existing branches and never merges. Connect a fine-grained token in
+  Settings → GitHub; GitHub Enterprise is supported.
+- Per-resource alert rules: send a resource's or server's alerts only to chosen destinations, only
+  above a minimum severity, also to its own webhook, or mute them. Set from the Alerts card on each
+  resource and server page; a server's rule covers its resources unless they have their own.
 - AI investigations: instead of answering from the initial evidence alone, the AI can call read-only
   tools to fetch more logs, deployment build logs, configuration, environment variable names (never
   values), server and container metrics, disk usage, other resources and past incidents. Capped at
@@ -36,6 +56,16 @@ All notable changes to this project are documented here. The format follows
 
 - Existing databases are migrated automatically on start.
 - Requires `anthropic` 1.15 or later.
+- Lower memory use: about 9 MB less at idle (the SSH library loads only when metrics are used), and
+  `MALLOC_ARENA_MAX=2` in the Docker image. The login rate limiter no longer keeps expired addresses.
+- `OPSMENDER_SECURE_COOKIES` defaults to per-request: session cookies are Secure on HTTPS requests.
+
+### Fixed
+
+- "Form expired" on every form when OpsMender is served over plain HTTP (such as Coolify's
+  generated sslip.io domains): the session cookie was marked Secure based on a guessed https:// URL.
+- When Coolify's API is turned off, the Coolify connection test says so and where to enable it,
+  instead of reporting a token permission problem.
 
 ## [0.1.0] - 2026-10-18
 

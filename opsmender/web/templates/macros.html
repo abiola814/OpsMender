@@ -32,6 +32,29 @@
   </li>
 {%- endmacro %}
 
+{% macro advice_item(a, actions_enabled, show_resource=True) -%}
+  <li class="advice">
+    <div>
+      <div class="title">{{ a.title }}</div>
+      <div class="small faint">
+        {% if show_resource and a.resource %}<a href="/resources/{{ a.resource.uuid }}">{{ a.resource.name }}</a> · {% endif %}
+        <a href="/servers/{{ a.server_uuid }}">{{ a.server_name }}</a>
+        {% if a.risk %} · risk: {{ a.risk }}{% endif %}
+      </div>
+      <p class="small dim">{{ a.detail }}</p>
+      <div class="small">{{ a.action|markdown }}</div>
+      {% if a.command %}<pre class="code small">{{ a.command }}</pre>{% endif %}
+      {% if a.can_apply %}
+        <div class="btn-row" style="margin-top:6px">
+          <a class="btn small" href="/optimize/apply?resource={{ a.resource.uuid }}&amp;limit={{ a.limit }}">Set limit to {{ a.limit }} in Coolify…</a>
+          {% if not actions_enabled %}<span class="small faint">needs Actions turned on in Settings</span>{% endif %}
+        </div>
+      {% endif %}
+    </div>
+    {{ severity(a.severity) }}
+  </li>
+{%- endmacro %}
+
 {% macro incident_row(i) -%}
   <li>
     <div>

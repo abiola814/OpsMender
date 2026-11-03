@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from ..adapters.coolify import CoolifyError
+from ..advice import check_leaks
 from ..metrics.autosetup import setup_pending
 from ..metrics.store import rollup_and_prune
 from ..runtime import Runtime
@@ -53,6 +54,7 @@ async def _maintenance_loop(rt: Runtime) -> None:
         try:
             rollup_and_prune(rt.db)
             check_disk_forecasts(rt)
+            check_leaks(rt)
         except Exception:  # noqa: BLE001
             log.exception("maintenance crashed")
         await asyncio.sleep(3600)

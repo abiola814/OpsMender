@@ -11,6 +11,7 @@ from ...metrics.autosetup import DISABLED_BY_USER, SetupError, ensure_keypair, p
 from ...metrics.installer import install_script
 from ...metrics.store import disk_forecast, disk_series, history
 from ...monitor.metrics import poll_server
+from ...notify import destinations, get_route
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
 from .dashboard import server_cards
 
@@ -48,6 +49,7 @@ async def server_detail(request: Request, uuid: str, user: str = Depends(current
         series=history(rt.db, uuid, hours=hours) if server["metrics_enabled"] else [],
         forecast=disk_forecast(disk_series(rt.db, uuid)) if server["metrics_enabled"] else None,
         public_key=public_key, auto_metrics=rt.settings.bool("auto_metrics"),
+        route=get_route(rt, "server", uuid), destinations=await destinations(rt),
         disk_report=disk.report_for(rt, server), risk_text=disk.RISK_TEXT, probe_current=disk.PROBE_VERSION,
         hosted=rt.db.all("SELECT * FROM resources WHERE server_uuid = ? AND missing = 0 ORDER BY name", (uuid,)),
         incidents=rt.db.all("SELECT * FROM incidents WHERE server_uuid = ? ORDER BY status = 'open' DESC,"

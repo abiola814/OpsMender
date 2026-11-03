@@ -43,12 +43,16 @@ class FakeCoolify:
         }
         self.notifications_supported = True
         self.calls: list[tuple[str, str]] = []
+        self.patches: list[tuple[str, dict]] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/v1")
         self.calls.append((request.method, path))
         if request.headers.get("authorization") != f"Bearer {self.token}":
             return httpx.Response(401, json={"message": "Unauthenticated."})
+        if request.method == "PATCH" and path in ("/applications/app1", "/databases/db1"):
+            self.patches.append((path, json.loads(request.content)))
+            return httpx.Response(200, json={"uuid": path.rsplit("/", 1)[1]})
         routes = {
             "/version": lambda: "4.0.0-test",
             "/servers": lambda: self.servers,

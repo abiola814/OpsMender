@@ -22,8 +22,14 @@ def _client_ip(request: Request) -> str:
 
 def _rate_limited(ip: str) -> bool:
     now = time.time()
+    if len(_ATTEMPTS) > 1000:  # forget addresses whose attempts have all expired, so the dict can't grow forever
+        for key in [k for k, ts in _ATTEMPTS.items() if not ts or now - ts[-1] >= WINDOW]:
+            del _ATTEMPTS[key]
     recent = [t for t in _ATTEMPTS.get(ip, []) if now - t < WINDOW]
-    _ATTEMPTS[ip] = recent
+    if recent:
+        _ATTEMPTS[ip] = recent
+    else:
+        _ATTEMPTS.pop(ip, None)
     return len(recent) >= MAX_ATTEMPTS
 
 

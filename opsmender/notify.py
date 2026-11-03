@@ -20,6 +20,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from .adapters.coolify import CoolifyError
+from .db import dumps, loads
 
 log = logging.getLogger("opsmender.notify")
 
@@ -31,6 +32,8 @@ COOLIFY_COVERS = {"deployment_failed": "deployment_failure", "resource_down": "s
                   "server_unreachable": "server_unreachable", "disk_pressure": "server_disk_usage"}
 CACHE_SECONDS = 300
 ICONS = {"critical": "🔴", "warning": "🟠", "info": "🔵", "resolved": "✅"}
+SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
+ROUTE_MODES = ("default", "only", "mute")
 
 
 @dataclass
@@ -40,6 +43,9 @@ class Alert:
     severity: str = "info"     # critical | warning | info | resolved
     kind: str = "test"
     url: str | None = None
+    resource_uuid: str | None = None  # what the alert is about, for per-resource routing
+    server_uuid: str | None = None
+    level: str | None = None          # the incident's severity; "resolved" alerts route by it
 
     def text(self, limit: int = 4000) -> str:
         parts = [f"{ICONS.get(self.severity, '')} OpsMender: {self.title}".strip()]
@@ -65,6 +71,66 @@ class Channel:
         """True when Coolify itself already sends this kind of alert on this channel."""
         event = COOLIFY_COVERS.get(kind)
         return bool(event and self.settings.get(f"{event}_{self.name}_notifications"))
+
+
+@dataclass
+class Route:
+    """Where one resource's or server's alerts go, instead of everywhere."""
+    target_kind: str            # resource | server
+    target_uuid: str
+    mode: str = "default"       # default: the usual destinations | only: the listed ones | mute: nothing
+    min_severity: str = "info"
+    destinations: tuple[str, ...] = ()   # "coolify:<channel>" or "webhook" (OpsMender's own), for mode "only"
+    extra_webhook: str | None = None     # also gets this target's alerts, in "default" and "only" modes
+
+
+def get_route(rt, target_kind: str, target_uuid: str | None) -> Route | None:
+    if not target_uuid:
+        return None
+    row = rt.db.one("SELECT * FROM notification_routes WHERE target_kind = ? AND target_uuid = ?",
+                    (target_kind, target_uuid))
+    if not row:
+        return None
+    return Route(target_kind, target_uuid, row["mode"], row["min_severity"],
+                 tuple(loads(row["destinations"], []) or []),
+                 rt.box.decrypt(row["extra_webhook"]) if row["extra_webhook"] else None)
+
+
+def save_route(rt, route: Route) -> None:
+    if route.mode == "default" and route.min_severity == "info" and not route.extra_webhook:
+        rt.db.execute("DELETE FROM notification_routes WHERE target_kind = ? AND target_uuid = ?",
+                      (route.target_kind, route.target_uuid))  # same as having no rule
+        return
+    rt.db.execute(
+        "INSERT INTO notification_routes (target_kind, target_uuid, mode, min_severity, destinations, extra_webhook,"
+        " updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(target_kind, target_uuid) DO UPDATE SET mode = excluded.mode,"
+        " min_severity = excluded.min_severity, destinations = excluded.destinations,"
+        " extra_webhook = excluded.extra_webhook, updated_at = excluded.updated_at",
+        (route.target_kind, route.target_uuid, route.mode, route.min_severity, dumps(list(route.destinations)),
+         rt.box.encrypt(route.extra_webhook) if route.extra_webhook else None, time.time()))
+
+
+def route_for(rt, alert: Alert) -> Route | None:
+    """The most specific rule for an alert: its resource's, else its server's, else none (send everywhere)."""
+    server_uuid = alert.server_uuid
+    if alert.resource_uuid:
+        route = get_route(rt, "resource", alert.resource_uuid)
+        if route:
+            return route
+        server_uuid = server_uuid or rt.db.scalar("SELECT server_uuid FROM resources WHERE uuid = ?",
+                                                  (alert.resource_uuid,))
+    return get_route(rt, "server", server_uuid)
+
+
+async def destinations(rt) -> list[dict[str, Any]]:
+    """Destinations a route can pick from."""
+    out = []
+    if rt.settings.bool("notify_via_coolify"):
+        out += [{"id": f"coolify:{c.name}", "label": f"Coolify {c.label}", "ready": c.ready, "problem": c.problem}
+                for c in await coolify_channels(rt)]
+    if rt.settings.get("notify_webhook_url"):
+        out.append({"id": "webhook", "label": "OpsMender webhook", "ready": True, "problem": None})
+    return out
 
 
 # Reading Coolify's channel settings
@@ -218,8 +284,19 @@ SENDERS: dict[str, Sender] = {"discord": send_discord, "slack": send_slack, "tel
 async def dispatch(rt, alert: Alert, force: bool = False) -> list[tuple[str, bool | None, str]]:
     """Send an alert everywhere it should go. Returns (destination, ok, detail); ok=None means skipped."""
     results: list[tuple[str, bool | None, str]] = []
+    route = route_for(rt, alert)
+    allowed: set[str] | None = None
+    if route:
+        if route.mode == "mute":
+            return [("All destinations", None, "muted by this resource's alert rule")]
+        if SEVERITY_RANK.get(alert.level or alert.severity, 0) < SEVERITY_RANK.get(route.min_severity, 0):
+            return [("All destinations", None, f"below this resource's minimum severity ({route.min_severity})")]
+        if route.mode == "only":
+            allowed = set(route.destinations)
     if rt.settings.bool("notify_via_coolify"):
         for channel in await coolify_channels(rt, refresh=force):
+            if allowed is not None and f"coolify:{channel.name}" not in allowed:
+                continue
             if not channel.ready:
                 results.append((f"Coolify {channel.label}", None, channel.problem or "not ready"))
             elif channel.covers(alert.kind) and not force:
@@ -228,9 +305,12 @@ async def dispatch(rt, alert: Alert, force: bool = False) -> list[tuple[str, boo
                 ok, detail = await SENDERS[channel.name](channel.settings, alert)
                 results.append((f"Coolify {channel.label}", ok, detail))
     own = rt.settings.get("notify_webhook_url")
-    if own:
+    if own and (allowed is None or "webhook" in allowed):
         ok, detail = await send_webhook_url(own, alert)
         results.append(("OpsMender webhook", ok, detail))
+    if route and route.extra_webhook:
+        ok, detail = await send_webhook_url(route.extra_webhook, alert)
+        results.append((f"This {route.target_kind}'s webhook", ok, detail))
     for dest, ok, detail in results:
         if ok is False:
             log.warning("notification to %s failed: %s", dest, detail)

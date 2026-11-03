@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ...adapters.coolify import CoolifyClient, CoolifyError
 from ...ai.providers import PRESETS, AIConfig, AIError, complete
-from ...notify import Alert, coolify_channels, dispatch
+from ...github import DEFAULT_API, GitHubClient, GitHubError
+from ...notify import (ROUTE_MODES, SEVERITY_RANK, Alert, Route, coolify_channels, dispatch, get_route,
+                       save_route)
 from ...security import hash_password, verify_password
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
 
@@ -63,12 +65,17 @@ async def settings_page(request: Request, user: str = Depends(current_user)):
         request, "settings.html",
         s={k: s.get(k) for k in ("coolify_url", "coolify_verify_tls", "ai_provider", "ai_base_url", "ai_model",
                                  "ai_auto_diagnose", "ai_investigate", "actions_enabled", "notify_on_resolve", "auto_metrics",
-                                 "notify_via_coolify", *NUMERIC)},
+                                 "notify_via_coolify", "github_api_url", "github_login", *NUMERIC)},
+        has_github=bool(s.get("github_token")),
         access=s.get("coolify_access") or [],
         channels=await coolify_channels(rt) if s.get("coolify_token") else [],
         has_token=bool(s.get("coolify_token")), has_ai_key=bool(s.get("ai_api_key")),
         has_notify=bool(s.get("notify_webhook_url")),
         presets=list(PRESETS.values()),
+        routes=rt.db.all(
+            "SELECT n.*, COALESCE(r.name, s.name) AS name FROM notification_routes n"
+            " LEFT JOIN resources r ON n.target_kind = 'resource' AND r.uuid = n.target_uuid"
+            " LEFT JOIN servers s ON n.target_kind = 'server' AND s.uuid = n.target_uuid ORDER BY name"),
         webhook_url=f"{base}/webhooks/coolify/{webhook_token(rt)}",
     )
 
@@ -138,6 +145,40 @@ async def save_ai(request: Request, user: str = Depends(current_user)):
     else:
         flash(request, "AI settings saved." if provider else "AI diagnosis disabled.", "success")
     return redirect("/settings#ai")
+
+
+@router.post("/settings/github")
+async def save_github(request: Request, user: str = Depends(current_user)):
+    form = await form_with_csrf(request)
+    rt = rt_of(request)
+    if form.get("clear_token") == "on":
+        for key in ("github_token", "github_login"):
+            rt.settings.delete(key)
+        rt.db.audit(user, "save_github", "ok", detail="disconnected")
+        flash(request, "GitHub disconnected.", "success")
+        return redirect("/settings#github")
+    api_url = (form.get("github_api_url", "").strip() or DEFAULT_API).rstrip("/")
+    token = form.get("github_token", "").strip() or rt.settings.get("github_token") or ""
+    if not api_url.startswith("https://"):
+        flash(request, "The GitHub API URL must start with https://", "error")
+        return redirect("/settings#github")
+    if not token:
+        flash(request, "Paste a GitHub token.", "error")
+        return redirect("/settings#github")
+    client = GitHubClient(token, api_url)
+    try:
+        login = (await client.user()).get("login") or "?"
+    except GitHubError as exc:
+        flash(request, f"Couldn't connect to GitHub: {exc}", "error")
+        return redirect("/settings#github")
+    finally:
+        await client.close()
+    rt.settings.set("github_token", token)
+    rt.settings.set("github_api_url", api_url)
+    rt.settings.set("github_login", login)
+    rt.db.audit(user, "save_github", "ok", detail=f"{login} @ {api_url}")
+    flash(request, f"Connected to GitHub as {login}.", "success")
+    return redirect("/settings#github")
 
 
 @router.post("/settings/monitoring")
@@ -218,3 +259,41 @@ async def change_password(request: Request, user: str = Depends(current_user)):
         rt.db.audit(user, "change_password", "ok")
         flash(request, "Password changed.", "success")
     return redirect("/settings#account")
+
+
+@router.post("/alerts/{kind}/{uuid}")
+async def save_alert_route(request: Request, kind: str, uuid: str, user: str = Depends(current_user)):
+    form = await form_with_csrf(request)
+    rt = rt_of(request)
+    table = {"resource": "resources", "server": "servers"}.get(kind)
+    target = rt.db.one(f"SELECT uuid, name FROM {table} WHERE uuid = ?", (uuid,)) if table else None
+    if not target:
+        raise HTTPException(404, "Not found")
+    back = f"/{table}/{uuid}#alerts"
+    old = get_route(rt, kind, uuid)
+    mode = form.get("mode") if form.get("mode") in ROUTE_MODES else "default"
+    severity = form.get("min_severity") if form.get("min_severity") in SEVERITY_RANK else "info"
+    chosen = tuple(sorted(key.removeprefix("dest:") for key in form if key.startswith("dest:")))
+    webhook = form.get("extra_webhook", "").strip() or (old.extra_webhook if old else None)
+    if form.get("clear_webhook") == "on":
+        webhook = None
+    if webhook and not webhook.startswith(("https://", "http://")):
+        flash(request, "The webhook URL must start with https://", "error")
+        return redirect(back)
+    if mode == "only" and not chosen and not webhook:
+        flash(request, "Pick at least one destination, or add a webhook, for “Send only to”.", "error")
+        return redirect(back)
+    save_route(rt, Route(kind, uuid, mode, severity, chosen if mode == "only" else (), webhook))
+    rt.db.audit(user, "save_alert_route", "ok", kind, uuid, target["name"], f"{mode}, {severity}+")
+    if form.get("test") == "1":
+        alert = Alert(title=f"Test alert for {target['name']}", body="This is where its alerts go.", severity="warning",
+                      kind="test", url=rt.public_url(), resource_uuid=uuid if kind == "resource" else None,
+                      server_uuid=uuid if kind == "server" else None)
+        results = await dispatch(rt, alert, force=True)
+        if not results:
+            flash(request, "No destinations: enable a channel in Coolify (Notifications) or add a webhook.", "error")
+        for dest, ok, detail in results:
+            flash(request, f"{dest}: {detail}", "success" if ok else ("info" if ok is None else "error"))
+    else:
+        flash(request, f"Alert rule for {target['name']} saved.", "success")
+    return redirect(back)

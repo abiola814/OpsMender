@@ -239,3 +239,11 @@ details[open] summary { margin-bottom: 8px; }
   .topbar, .content { padding-left: 16px; padding-right: 16px; }
   .tiles, .g2, .g3, .g4 { grid-template-columns: 1fr; }
 }
+
+/* Proposed fix diffs */
+.diff { font: 12px/1.5 var(--mono); background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 8px 0; overflow-x: auto; margin: 6px 0 0; }
+.diff span { display: block; padding: 0 10px; white-space: pre; }
+.diff .d-add { background: var(--good-bg); }
+.diff .d-del { background: var(--bad-bg); }
+.diff .d-hunk { color: var(--text-faint); }
+.advice p { margin: 4px 0; }

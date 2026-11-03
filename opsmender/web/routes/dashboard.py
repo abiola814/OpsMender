@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Request
 
 from ...adapters.base import health_of
+from ...advice import cached_summary
 from ...db import loads
 from ...metrics.store import history
 from ..common import current_user, flash, form_with_csrf, redirect, render, rt_of
@@ -52,6 +53,7 @@ async def dashboard(request: Request, user: str = Depends(current_user)):
         deploy_failed=sum(1 for d in deploys if d["status"].lower() in {"failed", "error"}),
         running_deploys=rt.db.all("SELECT * FROM deployments WHERE final = 0 ORDER BY seen_at DESC"),
         thresholds={k: rt.settings.int(k) for k in ("cpu_threshold", "mem_threshold", "disk_threshold")},
+        advice=cached_summary(rt),
     )
 
 

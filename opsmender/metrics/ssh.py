@@ -8,8 +8,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import asyncssh
-
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*$")
 
 
@@ -32,17 +30,23 @@ class ProbeResult:
 
 
 def generate_keypair() -> tuple[str, str]:
+    import asyncssh  # imported on first use: ~10 MB that setups without metrics never need
+
     key = asyncssh.generate_private_key("ssh-ed25519", comment="opsmender")
     return key.export_private_key().decode(), key.export_public_key().decode().strip()
 
 
 def public_key_of(private_pem: str) -> str:
+    import asyncssh
+
     return asyncssh.import_private_key(private_pem).export_public_key().decode().strip()
 
 
 async def run_probe(host: str, port: int, private_pem: str, known_host_key: str | None,
                     request: str = "snapshot", username: str = "opsmender",
                     timeout: float = 20.0) -> ProbeResult:
+    import asyncssh
+
     key = asyncssh.import_private_key(private_pem)
     try:
         async with asyncssh.connect(host, port=port, username=username, client_keys=[key],
@@ -79,6 +83,8 @@ async def run_setup(host: str, port: int, username: str, private_pem: str, scrip
 
     Used once, with the SSH key Coolify already has for the server, to install the probe.
     """
+    import asyncssh
+
     key = asyncssh.import_private_key(private_pem)
     command = "sh -s" if username == "root" else "sudo -n sh -s"
     try:
