@@ -61,7 +61,11 @@ class CoolifyClient:
         if resp.status_code == 401:
             raise CoolifyError("Coolify rejected the API token (401).", 401)
         if resp.status_code == 403:
-            raise CoolifyError("The API token lacks permission for this request (403).", 403)
+            reason = _error_message(resp)
+            if "api is disabled" in reason.lower():
+                raise CoolifyError("Coolify's API is turned off. Enable it in Coolify → Settings → Advanced "
+                                   "→ API Access (403).", 403)
+            raise CoolifyError(f"The API token lacks permission for this request (403): {reason}", 403)
         if resp.status_code >= 400:
             message = _error_message(resp)
             raise CoolifyError(f"Coolify {method} {path} failed ({resp.status_code}): {message}", resp.status_code)

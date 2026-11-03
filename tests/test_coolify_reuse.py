@@ -1,11 +1,13 @@
 """OpsMender reusing what's already configured in Coolify: SSH keys, notification channels, logs."""
 import time
 
+import httpx
 import pytest
 from fake_coolify import PEM_OLD, PEM_SERVER
 
 from opsmender import notify
 from opsmender.adapters.base import Resource
+from opsmender.adapters.coolify import CoolifyClient, CoolifyError
 from opsmender.metrics import autosetup, ssh
 from opsmender.monitor.sync import sync
 
@@ -144,3 +146,11 @@ async def test_check_access_reports_capabilities(rt, fake):
     access = {a["key"]: a for a in await check_access(rt.coolify())}
     assert not access["ssh_keys"]["ok"] and "read:sensitive" in access["ssh_keys"]["detail"]
     assert not access["notifications"]["ok"] and "version" in access["notifications"]["detail"]
+
+
+async def test_disabled_coolify_api_is_explained():
+    transport = httpx.MockTransport(lambda r: httpx.Response(403, json={"success": False,
+                                                                         "message": "API is disabled."}))
+    client = CoolifyClient("https://coolify.test", "t", transport=transport)
+    with pytest.raises(CoolifyError, match="Settings → Advanced"):
+        await client.list_servers()
