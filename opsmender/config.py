@@ -55,14 +55,15 @@ def load_config() -> Config:
     data_dir.mkdir(parents=True, exist_ok=True)
     base_url = os.environ.get("OPSMENDER_BASE_URL", "").strip().split(",")[0].rstrip("/")
     if base_url and not base_url.startswith(("http://", "https://")):
-        base_url = "https://" + base_url  # some Coolify versions provide a bare domain
+        base_url = ""  # a bare domain doesn't say http or https; derive the URL from requests instead
     return Config(
         data_dir=data_dir,
         secret_key=_load_secret_key(data_dir),
         host=os.environ.get("OPSMENDER_HOST", "0.0.0.0"),
         port=int(os.environ.get("PORT", os.environ.get("OPSMENDER_PORT", "8000"))),
         base_url=base_url,
-        secure_cookies=_bool(os.environ.get("OPSMENDER_SECURE_COOKIES"), base_url.startswith("https://")),
+        # When off, cookies are still Secure on requests that arrive over HTTPS.
+        secure_cookies=_bool(os.environ.get("OPSMENDER_SECURE_COOKIES"), False),
         admin_user=os.environ.get("OPSMENDER_ADMIN_USER") or None,
         admin_password=os.environ.get("OPSMENDER_ADMIN_PASSWORD") or None,
         coolify_url=os.environ.get("OPSMENDER_COOLIFY_URL") or None,

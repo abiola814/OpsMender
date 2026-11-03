@@ -25,6 +25,22 @@ from .routes import ROUTERS
 log = logging.getLogger("opsmender")
 
 
+class _SessionsPerScheme:
+    """Session cookies marked Secure when the request arrived over HTTPS (or always, if forced).
+
+    Deciding per request keeps login working on plain-HTTP domains such as Coolify's sslip.io
+    defaults, where a Secure cookie would be dropped by the browser and every form would fail CSRF.
+    """
+
+    def __init__(self, app, force_secure: bool, **options):
+        self.secure = SessionMiddleware(app, https_only=True, **options)
+        self.plain = self.secure if force_secure else SessionMiddleware(app, https_only=False, **options)
+
+    async def __call__(self, scope, receive, send):
+        https = scope.get("scheme") in ("https", "wss")
+        await (self.secure if https else self.plain)(scope, receive, send)
+
+
 def _bootstrap(rt: Runtime, app: FastAPI) -> None:
     cfg = rt.config
     if not rt.db.scalar("SELECT COUNT(*) FROM users"):
@@ -60,8 +76,8 @@ def create_app(config: Config, start_background: bool = True) -> FastAPI:
             await rt.close()
 
     app = FastAPI(title="OpsMender", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(SessionMiddleware, secret_key=config.secret_key, session_cookie="opsmender_session",
-                       max_age=7 * 24 * 3600, same_site="strict", https_only=config.secure_cookies)
+    app.add_middleware(_SessionsPerScheme, force_secure=config.secure_cookies, secret_key=config.secret_key,
+                       session_cookie="opsmender_session", max_age=7 * 24 * 3600, same_site="strict")
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

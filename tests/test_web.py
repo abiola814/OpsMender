@@ -54,6 +54,15 @@ def test_csrf_is_enforced(client):
     assert r.status_code == 403
 
 
+def test_session_cookie_secure_only_over_https(tmp_path):
+    app = create_app(make_config(tmp_path), start_background=False)
+    with TestClient(app, base_url="http://plain.sslip.io") as c:
+        assert "secure" not in c.get("/setup").headers["set-cookie"].lower()
+        setup_admin(c)  # the CSRF round trip must survive plain HTTP
+    with TestClient(app, base_url="https://opsmender.example") as c:
+        assert "secure" in c.get("/login").headers["set-cookie"].lower()
+
+
 def test_pages_render_with_synced_data(client, fake):
     setup_admin(client)
     asyncio.run(sync(client.rt))

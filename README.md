@@ -124,7 +124,8 @@ Set these as environment variables. Everything else is configured in the UI.
 |---|---|---|
 | `OPSMENDER_DATA_DIR` | `./data` (`/data` in Docker) | SQLite database and generated secret key |
 | `OPSMENDER_SECRET_KEY` | generated into the data dir | Signs sessions and encrypts stored secrets |
-| `OPSMENDER_BASE_URL` | derived from the request | Public URL, used for the webhook URL and secure cookies |
+| `OPSMENDER_BASE_URL` | derived from the request | Public URL (with `http://` or `https://`), used for the webhook URL |
+| `OPSMENDER_SECURE_COOKIES` | per request | `true` marks session cookies Secure even on plain-HTTP requests (otherwise only HTTPS requests get them) |
 | `OPSMENDER_ADMIN_USER` / `OPSMENDER_ADMIN_PASSWORD` | – | Create the admin account on first start |
 | `OPSMENDER_COOLIFY_URL` / `OPSMENDER_COOLIFY_TOKEN` | – | Prefill the Coolify connection |
 | `PORT` | `8000` | HTTP port |
